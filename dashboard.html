@@ -137,8 +137,33 @@
   background-position: center;
   background-repeat: no-repeat;
   position: relative;
-  z-index: 10;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
 }
+
+@keyframes gradientShift {
+  0% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+.animate-gradient-slow {
+  background-size: 200% 200%;
+  animation: gradientShift 12s ease infinite;
+}
+
+@keyframes textGradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient-text {
+  background-size: 200% 200%;
+  animation: textGradientShift 4s ease infinite;
+}
+
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50 text-slate-900">
@@ -501,6 +526,34 @@
                   <button data-mode="long" class="pom-mode px-6 py-3 rounded-xl bg-white border-2 border-slate-200 font-semibold hover:border-[var(--primary)] transition-all">Long (15m)</button>
                 </div>
               </div>
+
+<div id="focusTaskBox"
+  class="mt-6 p-5 rounded-2xl shadow-lg backdrop-blur-md border border-white/30 
+         bg-gradient-to-br from-purple-500/20 via-fuchsia-500/20 to-indigo-500/20
+         animate-gradient-slow transition-all hover:shadow-xl hover:-translate-y-[2px]
+         flex items-center gap-4">
+
+  <!-- Glowing Dot -->
+  <div class="w-4 h-4 rounded-full bg-[var(--primary)] shadow-[0_0_12px_rgba(139,92,246,0.7)] animate-pulse"></div>
+
+  <div class="flex flex-col">
+    <div class="text-xs tracking-wide uppercase font-semibold text-slate-700/80">
+      Currently Focusing On
+    </div>
+
+    <div id="currentPomTask"
+      class="text-xl font-bold bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 
+             bg-clip-text text-transparent animate-gradient-text">
+      None
+    </div>
+
+    <div class="text-xs text-slate-600 mt-1">
+      Tap a task from your list to start focusing
+    </div>
+  </div>
+</div>
+
+
 
               <!-- Stats & Info -->
               <div class="space-y-6">
