@@ -548,6 +548,12 @@ function pomTick() {
     stopPomInternal();
     handleSessionComplete();
   }
+
+if (pomState.mode === "focus" && pomState.remaining > 0 && pomState.remaining % 60 === 59) {
+    incrementTaskTime();
+}
+
+
 }
 
 
@@ -953,6 +959,37 @@ async function fetchAIPlan(subjects, hours, days, goal) {
 
 /* -------------------------------- TASK SYSTEM -------------------------------- */
 
+function renderTasks() {
+  const box = $("#tasksList");
+  box.innerHTML = "";
+
+  tasks
+    .filter(t => !t.completed)
+    .forEach(t => {
+      const item = document.createElement("div");
+      item.id = `task-${t.id}`;
+      item.className =
+        "flex justify-between items-center p-3 bg-slate-100 rounded-lg hover:bg-slate-200 transition";
+
+      item.innerHTML = `
+        <div class="flex flex-col flex-1 cursor-pointer taskFocusTarget" data-id="${t.id}">
+          <div class="font-medium text-slate-800">${escapeHtml(t.text)}</div>
+          <div class="text-xs text-slate-500">
+  ${t.timeSpent || 0} min spent
+</div>
+        </div>
+
+        <button data-id="${t.id}" 
+          class="completeTaskBtn text-sm px-3 py-1 bg-green-600 text-white rounded-lg ml-3">
+          Complete
+        </button>
+      `;
+
+      box.appendChild(item);
+    });
+}
+
+
 function tasksColRef(uid) {
   return collection(db, "users", uid, "tasks");
 }
@@ -964,7 +1001,12 @@ async function loadTasks() {
   if (!user) return;
 
   const snaps = await getDocs(tasksColRef(user.uid));
-  tasks = snaps.docs.map(d => ({ id: d.id, ...d.data() }));
+  tasks = snaps.docs.map(d => ({
+  id: d.id,
+  timeSpent: d.data().timeSpent || 0,  
+  ...d.data()
+}));
+
   renderTasks();
   updateTaskCounters();
 }
@@ -974,10 +1016,12 @@ async function addTask(text) {
   if (!user) return;
 
   const docRef = await addDoc(tasksColRef(user.uid), {
-    text,
-    completed: false,
-    createdAt: Date.now()
-  });
+  text,
+  completed: false,
+  timeSpent: 0,  
+  createdAt: Date.now()
+});
+
 
   tasks.push({ id: docRef.id, text, completed: false });
   renderTasks();
@@ -1011,29 +1055,7 @@ async function completeTask(taskId) {
   }, 350);
 }
 
-function renderTasks() {
-  const box = $("#tasksList");
-  box.innerHTML = "";
 
-  tasks
-    .filter(t => !t.completed)
-    .forEach(t => {
-      const item = document.createElement("div");
-      item.id = `task-${t.id}`;
-      item.className =
-        "flex justify-between items-center p-3 bg-slate-100 rounded-lg hover:bg-slate-200 transition";
-
-      item.innerHTML = `
-          <span>${escapeHtml(t.text)}</span>
-          <button data-id="${t.id}"
-            class="completeTaskBtn text-sm px-3 py-1 bg-green-600 text-white rounded-lg">
-            Complete
-          </button>
-      `;
-
-      box.appendChild(item);
-    });
-}
 
 function updateTaskCounters() {
   const pending = tasks.filter(t => !t.completed).length;
@@ -1049,6 +1071,25 @@ setText("pendingTasksCount", pending);
 setText("completedTasksCount", done);
 
 }
+
+async function incrementTaskTime() {
+  const user = auth.currentUser;
+  if (!user || !state.currentTaskId) return;
+
+  const task = tasks.find(t => t.id === state.currentTaskId);
+  if (!task) return;
+
+  task.timeSpent = (task.timeSpent || 0) + 1;
+
+  // Update Firestore
+  await updateDoc(doc(db, "users", user.uid, "tasks", state.currentTaskId), {
+    timeSpent: task.timeSpent
+  });
+
+  // Update UI
+  renderTasks();
+}
+
 
 
 /* ----------------- Projects ----------------- */
@@ -1221,8 +1262,16 @@ try {
   console.warn('fetch projects failed', e);
 }
 
-// 🔥 FIX: load tasks too
-loadTasks();
+await loadTasks();  // load tasks first
+
+// AFTER loading tasks, restore active task
+const savedTaskId = localStorage.getItem("currentPomTaskId");
+if (savedTaskId) {
+  state.currentTaskId = savedTaskId;
+  const task = tasks.find(t => t.id === savedTaskId);
+  if (task) setText("currentPomTask", task.text);
+}
+
 
   });
 }
@@ -1291,6 +1340,19 @@ function initializeDashboard() {  // ← Changed name
 
 document.addEventListener("click", (e) => {
   const el = e.target;
+  // If user clicks a task, set it as active Pomodoro task
+if (el.closest && el.closest('.taskFocusTarget')) {
+  const id = el.closest('.taskFocusTarget').dataset.id;
+  state.currentTaskId = id;
+
+  setText('currentPomTask', tasks.find(t => t.id === id)?.text || 'None');
+
+  localStorage.setItem("currentPomTaskId", id);   // ← ADD THIS EXACT LINE (FIX #3)  
+
+  toast("Now focusing on: " + (tasks.find(t => t.id === id)?.text || 'Task'));
+  return;
+}
+
   if (el.classList.contains("completeTaskBtn")) {
     const id = el.dataset.id;
     completeTask(id);
