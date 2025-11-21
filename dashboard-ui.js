@@ -741,7 +741,8 @@ function renderPlan(plan) {
 
   plan.days.forEach(d => {
     const dayWrap = document.createElement('div');
-    dayWrap.className = 'mt-3 p-3 rounded-lg bg-white border';
+   dayWrap.className = 'mt-6 p-5 rounded-xl bg-white border shadow-sm';
+
 
     const title = document.createElement('div');
     title.className = 'font-semibold mb-2';
@@ -750,34 +751,60 @@ function renderPlan(plan) {
 
     d.slots.forEach(slot => {
       const lower = (slot.subject || "").toLowerCase();
+const subjectLower = (slot.subject || "").toLowerCase();
+const topicLower = (slot.topic || slot.note || "").toLowerCase();
+
 const isBreak =
-  lower.includes("break") ||
-  lower.includes("rest") ||
-  lower.includes("free") ||
-  lower.includes("nap") ||
-  lower.includes("meal") ||
-  lower.includes("lunch") ||
-  lower.includes("dinner") ||
-  lower.includes("snack") ||
-  lower.includes("walk") ||
-  lower.includes("stretch");
+  subjectLower.includes("break") ||
+  subjectLower.includes("rest") ||
+  subjectLower.includes("free") ||
+  subjectLower.includes("lunch") ||
+  subjectLower.includes("dinner") ||
+  subjectLower.includes("nap") ||
+  subjectLower.includes("meal") ||
+  subjectLower.includes("snack") ||
+  subjectLower.includes("stretch") ||
+
+  topicLower.includes("break") ||
+  topicLower.includes("rest") ||
+  topicLower.includes("free") ||
+  topicLower.includes("lunch") ||
+  topicLower.includes("dinner") ||
+  topicLower.includes("nap") ||
+  topicLower.includes("meal") ||
+  topicLower.includes("snack") ||
+  topicLower.includes("stretch");
 
 
       const slotEl = document.createElement('div');
-      if (isBreak) {
-  slotEl.style.background = "rgba(255, 220, 50, 0.25)";
-  slotEl.style.border = "2px dashed #fbbf24";
-  slotEl.style.boxShadow = "0 0 8px rgba(251, 191, 36, 0.4)";
+slotEl.className = `
+  mb-4 
+  p-4 
+  rounded-xl 
+  shadow-sm 
+  bg-white 
+  border 
+  transition-all 
+  hover:shadow-md 
+  hover:-translate-y-[1px]
+`;
+    
+if (isBreak) {
+  slotEl.style.background = "rgba(255, 220, 50, 0.15)";
+  slotEl.style.border = "1px dashed #fbbf24";
 } else {
-  slotEl.style.background = "#f8fafc";
+  slotEl.style.background = "#ffffff";
   slotEl.style.border = "1px solid #e2e8f0";
 }
 
-
-      slotEl.innerHTML = `
-        <div class="font-medium">${slot.time} • ${escapeHtml(slot.subject)}</div>
-        <div class="text-xs text-slate-500">${escapeHtml(slot.topic || slot.note || '')}</div>
-      `;
+ slotEl.innerHTML = `
+  <div class="font-semibold text-slate-700 mb-1">
+    ${slot.time} • ${escapeHtml(slot.subject)}
+  </div>
+  <div class="text-xs text-slate-500 leading-snug">
+    ${escapeHtml(slot.topic || slot.note || '')}
+  </div>
+`;
 
       dayWrap.appendChild(slotEl);
     });
