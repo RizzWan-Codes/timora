@@ -87,8 +87,14 @@ let state = {
   leaderboard: [],
   projects: [],
   water: { goal: "3L", cups: 0 },
-  pomSettings: { ...defaultPomSettings }
+  pomSettings: { ...defaultPomSettings },
+  tasks: {
+    pending: 0,
+    completed: 0,
+    list: []
+  }
 };
+
 
 /* ----------------- Sound presets ----------------- */
 const soundMap = {
@@ -218,7 +224,8 @@ async function loadUserDataOnce(uid) {
         totalFocusHours: 0,
         currentStreak: 0,
         state: { pomSettings: defaultPomSettings },
-        water: { cups: 0, goal: "3L" }
+        water: { cups: 0, goal: "3L" },
+        tasks: state.tasks,
       }, { merge: true });
       return loadUserDataOnce(uid);
     }
@@ -235,6 +242,7 @@ async function loadUserDataOnce(uid) {
     state.streak = d.currentStreak || 0;
     if (d.state && d.state.pomSettings) state.pomSettings = { ...state.pomSettings, ...d.state.pomSettings };
     if (d.water) state.water = { ...state.water, ...d.water };
+    if (d.tasks) state.tasks = d.tasks;
     if (Array.isArray(d.projects)) state.projects = d.projects;
     
     updateProfileUI();
@@ -260,12 +268,14 @@ async function saveUserState() {
       currentStreak: state.streak,
       state: { pomSettings: state.pomSettings },
       water: state.water,
+      tasks: state.tasks,   // ← ★★ THE MISSING LINE
       lastActive: new Date().toISOString()
     }, { merge: true });
   } catch (e) {
     console.warn('saveUserState failed', e);
   }
 }
+
 
 /* ----------------- Profile & KPI UI ----------------- */
 function updateProfileUI() {
@@ -296,6 +306,12 @@ function updateKpis() {
   setText('ui-streak', state.streak || 0);
   if (pomTotalFocusEl) pomTotalFocusEl.textContent = `${(state.focusHours || 0).toFixed(1)}h`;
 }
+
+function updateOverviewTasks() {
+  setText("pendingTasksCount", state.tasks.pending);
+  setText("completedTasksCount", state.tasks.completed);
+}
+
 
 /* ----------------- Section switching (FIXED) ----------------- */
 const sections = {};
@@ -935,6 +951,106 @@ async function fetchAIPlan(subjects, hours, days, goal) {
 }
 
 
+/* -------------------------------- TASK SYSTEM -------------------------------- */
+
+function tasksColRef(uid) {
+  return collection(db, "users", uid, "tasks");
+}
+
+let tasks = []; // local cache
+
+async function loadTasks() {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const snaps = await getDocs(tasksColRef(user.uid));
+  tasks = snaps.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderTasks();
+  updateTaskCounters();
+}
+
+async function addTask(text) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const docRef = await addDoc(tasksColRef(user.uid), {
+    text,
+    completed: false,
+    createdAt: Date.now()
+  });
+
+  tasks.push({ id: docRef.id, text, completed: false });
+  renderTasks();
+  updateTaskCounters();
+}
+
+async function completeTask(taskId) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  // Confetti
+  confetti({
+    particleCount: 120,
+    spread: 80,
+    origin: { y: 0.6 }
+  });
+
+  // Slide animation
+  const el = document.querySelector(`#task-${taskId}`);
+  el.style.transition = "all 0.4s";
+  el.style.opacity = "0";
+  el.style.transform = "translateX(40px)";
+
+  setTimeout(async () => {
+    await updateDoc(doc(db, "users", user.uid, "tasks", taskId), {
+      completed: true
+    });
+    tasks = tasks.filter(t => t.id !== taskId);
+    renderTasks();
+    updateTaskCounters();
+  }, 350);
+}
+
+function renderTasks() {
+  const box = $("#tasksList");
+  box.innerHTML = "";
+
+  tasks
+    .filter(t => !t.completed)
+    .forEach(t => {
+      const item = document.createElement("div");
+      item.id = `task-${t.id}`;
+      item.className =
+        "flex justify-between items-center p-3 bg-slate-100 rounded-lg hover:bg-slate-200 transition";
+
+      item.innerHTML = `
+          <span>${escapeHtml(t.text)}</span>
+          <button data-id="${t.id}"
+            class="completeTaskBtn text-sm px-3 py-1 bg-green-600 text-white rounded-lg">
+            Complete
+          </button>
+      `;
+
+      box.appendChild(item);
+    });
+}
+
+function updateTaskCounters() {
+  const pending = tasks.filter(t => !t.completed).length;
+const done = tasks.filter(t => t.completed).length;
+
+// Update Firebase root counters too
+state.tasks.pending = pending;
+state.tasks.completed = done;
+
+saveUserState();
+
+setText("pendingTasksCount", pending);
+setText("completedTasksCount", done);
+
+}
+
+
 /* ----------------- Projects ----------------- */
 function initProjects() {
   $('#newProjectBtn')?.addEventListener('click', async () => {
@@ -1096,13 +1212,18 @@ function setupAuthListener() {
     }
 
     // Load projects from subcollection
-    try {
-      const snaps = await getDocs(collection(db, 'users', user.uid, 'projects'));
-      state.projects = snaps.docs.map(d => ({ id: d.id, ...d.data() }));
-      populateProjects();
-    } catch (e) {
-      console.warn('fetch projects failed', e);
-    }
+   // Load projects
+try {
+  const snaps = await getDocs(collection(db, 'users', user.uid, 'projects'));
+  state.projects = snaps.docs.map(d => ({ id: d.id, ...d.data() }));
+  populateProjects();
+} catch (e) {
+  console.warn('fetch projects failed', e);
+}
+
+// 🔥 FIX: load tasks too
+loadTasks();
+
   });
 }
 
@@ -1147,6 +1268,7 @@ function initializeDashboard() {  // ← Changed name
   populateMerch();
   populateWaterTracker();
   updatePomUI();
+  updateOverviewTasks();
   
   // Setup auth listener
   setupAuthListener();
@@ -1156,6 +1278,32 @@ function initializeDashboard() {  // ← Changed name
   
   toast('Dashboard ready — live with Firebase');
   console.log('Dashboard initialization complete');
+
+  $("#addTaskBtn")?.addEventListener("click", () => {
+  const input = $("#taskInput");
+  const val = input.value.trim();
+  if (!val) return toast("Task cannot be empty");
+  addTask(val);
+
+  input.value = "";
+  
+});
+
+document.addEventListener("click", (e) => {
+  const el = e.target;
+  if (el.classList.contains("completeTaskBtn")) {
+    const id = el.dataset.id;
+    completeTask(id);
+    state.tasks.pending--;
+state.tasks.completed++;
+saveUserState();
+updateOverviewTasks();
+
+  }
+});
+
+loadTasks();  // load tasks on dashboard load
+
 }
 
 // Start initialization
