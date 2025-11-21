@@ -47,6 +47,13 @@ window.firebaseAuth = auth;
 window.firebaseDB = db;
 
 /* ----------------- Helpers ----------------- */
+// Ask for notification permission at startup
+if ("Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission().then((p) => {
+    console.log("Notification permission:", p);
+  });
+}
+
 const $ = (s) => document.querySelector(s);
 const $all = (s) => Array.from(document.querySelectorAll(s));
 const setText = (id, text) => {
@@ -501,13 +508,32 @@ function setPomMode(mode) {
 
 function pomTick() {
   if (!pomState.running) return;
+  
   pomState.remaining--;
+
+  // 🔔 30 seconds remaining notification
+  if (pomState.remaining === 30 && state.pomSettings.notifications) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("⏳ 30 seconds left!", {
+        body: "Your session is about to end. Wrap up your work!",
+        icon: state.user.photoURL || "logo.png"
+      });
+    }
+
+    // Optional tiny beep
+    try {
+      AudioManager.play("soft-ding.mp3");
+    } catch (_) {}
+  }
+
   updatePomUI();
+
   if (pomState.remaining <= 0) {
     stopPomInternal();
     handleSessionComplete();
   }
 }
+
 
 function stopPomInternal() {
   if (pomTimerId) {
@@ -738,9 +764,15 @@ const isBreak =
 
 
       const slotEl = document.createElement('div');
-      slotEl.className = 'mb-2 text-sm p-3 rounded-lg';
-      slotEl.style.background = isBreak ? "rgba(255, 204, 0, 0.15)" : "#f8fafc";
-      slotEl.style.border = isBreak ? "1px dashed #f59e0b" : "1px solid #e2e8f0";
+      if (isBreak) {
+  slotEl.style.background = "rgba(255, 220, 50, 0.25)";
+  slotEl.style.border = "2px dashed #fbbf24";
+  slotEl.style.boxShadow = "0 0 8px rgba(251, 191, 36, 0.4)";
+} else {
+  slotEl.style.background = "#f8fafc";
+  slotEl.style.border = "1px solid #e2e8f0";
+}
+
 
       slotEl.innerHTML = `
         <div class="font-medium">${slot.time} • ${escapeHtml(slot.subject)}</div>
@@ -822,7 +854,7 @@ function generateLocalPlan(subjects, hoursPerDay, days, goal) {
   return plan;
 }
 
-const AI_URL = "https://aitimora.vercel.app/api/generate-plan";
+
 
 async function fetchAIPlan(subjects, hours, days, goal) {
   try {
@@ -837,7 +869,7 @@ async function fetchAIPlan(subjects, hours, days, goal) {
 
     console.log("Request payload:", requestBody);
 
-    const resp = await fetch("https://aitimora.vercel.app/api/generate-plan", {
+    const resp = await fetch("/api/generate-plan", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
