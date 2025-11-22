@@ -76,7 +76,8 @@ const defaultPomSettings = {
   soundType: "chime",
   sound: null,
   notifications: true,
-  sessionsBeforeLong: 4
+  sessionsBeforeLong: 4,
+  autoStart: false
 };
 
 let state = {
@@ -173,14 +174,14 @@ const AudioManager = (() => {
 let pomTimerEl, pomSessionCountEl, pomTotalFocusEl, pomHistoryWrap;
 let pomStartBtn, pomPauseBtn, pomResetBtn, pomPauseIcon;
 let playTestSoundBtn, pauseTestSoundBtn, resumeTestSoundBtn, stopTestSoundBtn;
-let focusTimeInput, shortBreakInput, longBreakInput;
+let focusTimeInput, shortBreakInput, longBreakInput, autoStartToggle, longBreakFreq;
 let soundSelect, soundFileInput, testSoundBtn, notifToggle;
 let saveSettingsBtn, resetStateBtn;
 
 /* ----------------- Initialize DOM references ----------------- */
 function initDOMReferences() {
   pomTimerEl = $('#pom-timer');
-  pomSessionCountEl = $('#pomSessionsToday');
+  pomSessionCountEl = $('#PomodoroSessionsToday');
   pomTotalFocusEl = $('#pomTotalFocus');
   pomHistoryWrap = $('#pomHistory');
 
@@ -199,6 +200,8 @@ function initDOMReferences() {
   longBreakInput = $('#longBreakInput');
   soundSelect = $('#soundSelect');
   soundFileInput = $('#soundFileInput');
+  autoStartToggle = $('#autoStartToggle');
+  longBreakFreq = $('#longBreakFreq');
   testSoundBtn = $('#testSoundBtn');
   notifToggle = $('#notifToggle');
   saveSettingsBtn = $('#saveSettingsBtn');
@@ -207,6 +210,36 @@ function initDOMReferences() {
 
 /* ----------------- Firestore helpers ----------------- */
 const userDocRef = (uid) => doc(db, 'users', uid);
+
+function todayStatsRef(uid) {
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  return doc(db, "users", uid, "dailyStats", today);
+}
+
+
+async function loadTodayStats(uid) {
+  try {
+    const statsRef = todayStatsRef(uid);
+    const snap = await getDoc(statsRef);
+
+    if (!snap.exists()) {
+      console.warn("Today stats doc does NOT exist — will be created only when a session completes.");
+      return;
+    }
+
+    const data = snap.data();
+    state.sessionsToday = data.sessionsCompleted || 0;
+    state.focusHoursToday = (data.focusMinutes || 0) / 60;
+
+    setText('PomodoroSessionsToday', state.sessionsToday);
+    if (pomTotalFocusEl)
+      pomTotalFocusEl.textContent = `${state.focusHoursToday.toFixed(1)}h`;
+
+  } catch (e) {
+    console.error('loadTodayStats failed', e);
+  }
+}
+
 
 /* ----------------- Load user data ----------------- */
 async function loadUserDataOnce(uid) {
@@ -277,6 +310,32 @@ async function saveUserState() {
 }
 
 
+// Universal UI update function
+function updateSessionStatsUI() {
+  const sessionCount = state.sessionsToday || 0;
+  const focusHours = (state.focusHoursToday || 0).toFixed(1);
+  
+  console.log(`🔄 updateSessionStatsUI called: ${sessionCount} sessions`);
+  
+  // Update Pomodoro section
+  const pomEl = document.getElementById('PomodoroSessionsToday');
+  if (pomEl) {
+    pomEl.textContent = sessionCount;
+    console.log('✅ Pomodoro section updated');
+  }
+  
+  // Update focus hours
+  if (pomTotalFocusEl) {
+    pomTotalFocusEl.textContent = `${focusHours}h`;
+  }
+  
+  if (pomSessionCountEl) {
+    pomSessionCountEl.textContent = sessionCount;
+  }
+  
+  console.log(`✅ All UIs updated to: ${sessionCount} sessions`);
+}
+
 /* ----------------- Profile & KPI UI ----------------- */
 function updateProfileUI() {
   setText('ui-username', state.user.name || 'User');
@@ -302,9 +361,70 @@ photoContainer.style.backgroundColor = "#e5e7eb";
 
 function updateKpis() {
   const fhEl = document.querySelector('#ui-focus-hours');
-  if (fhEl) fhEl.textContent = `${(state.focusHours || 0).toFixed(1)}h`;
+  if (fhEl) fhEl.textContent = `${state.focusHours.toFixed(1)}h`;
+
   setText('ui-streak', state.streak || 0);
-  if (pomTotalFocusEl) pomTotalFocusEl.textContent = `${(state.focusHours || 0).toFixed(1)}h`;
+
+  // Show today’s focus hours only
+  if (pomTotalFocusEl)
+    pomTotalFocusEl.textContent = `${(state.focusHoursToday || 0).toFixed(1)}h`;
+}
+
+
+async function loadRecentSessions() {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  try {
+    const qSnap = await getDocs(
+      query(
+        collection(db, "users", user.uid, "sessions"),
+        orderBy("timestamp", "desc"),
+        limit(5)
+      )
+    );
+
+    const wrap = document.getElementById("recentSessionsList");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+
+    if (qSnap.empty) {
+      wrap.innerHTML = `
+        <div class="text-center text-slate-400 text-sm py-4">
+          No sessions yet. Complete your first focus session!
+        </div>
+      `;
+      return;
+    }
+
+    qSnap.forEach(docSnap => {
+      const d = docSnap.data();
+      const date = new Date(d.timestamp);
+      const isToday = date.toDateString() === new Date().toDateString();
+      const timeStr = isToday 
+        ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+      const item = document.createElement("div");
+      item.className = "flex items-center justify-between text-sm mb-2 p-2 rounded-lg hover:bg-slate-50 transition";
+
+      const typeColor = d.type === 'focus' ? 'bg-[var(--primary)]' : 'bg-blue-500';
+      const typeName = d.type === 'focus' ? 'Focus' : 'Break';
+
+      item.innerHTML = `
+        <div class="flex items-center gap-3">
+          <div class="w-2 h-2 rounded-full ${typeColor}"></div>
+          <span class="text-slate-700 font-medium">${typeName} — ${d.minutes}m</span>
+          ${d.taskName ? `<span class="text-xs text-slate-400">• ${escapeHtml(d.taskName)}</span>` : ''}
+        </div>
+        <span class="text-slate-400">${timeStr}</span>
+      `;
+
+      wrap.appendChild(item);
+    });
+  } catch (e) {
+    console.error("loadRecentSessions failed:", e);
+  }
 }
 
 function updateOverviewTasks() {
@@ -501,7 +621,11 @@ const pomState = {
   remaining: 0,
   running: false,
   sessionsCompleted: 0
+  
 };
+
+let pomTotalSeconds = 0;
+
 
 function msToMMSS(s) {
   const m = Math.floor(s / 60);
@@ -510,52 +634,99 @@ function msToMMSS(s) {
 }
 
 function updatePomUI() {
-  if (pomTimerEl) pomTimerEl.textContent = msToMMSS(pomState.remaining);
-  if (pomSessionCountEl) pomSessionCountEl.textContent = pomState.sessionsCompleted;
-  if (pomTotalFocusEl) pomTotalFocusEl.textContent = `${(state.focusHours || 0).toFixed(1)}h`;
+  if (pomTimerEl) 
+    pomTimerEl.textContent = msToMMSS(pomState.remaining);
+
+  // ❌ DO NOT OVERRIDE SESSIONS TODAY HERE
+  // Firestore realtime listener updates this automatically
+
+  if (pomTotalFocusEl) 
+    pomTotalFocusEl.textContent = `${(state.focusHoursToday || 0).toFixed(1)}h`;
 }
+
 
 function setPomMode(mode) {
   pomState.mode = mode;
   const mins = mode === 'focus' ? state.pomSettings.focus : (mode === 'short' ? state.pomSettings.short : state.pomSettings.long);
   pomState.remaining = Math.max(1, Number(mins || 1)) * 60;
+    pomTotalSeconds = pomState.remaining;   // ← ★ ADD THIS LINE
   updatePomUI();
 }
 
 function pomTick() {
   if (!pomState.running) return;
-  
+
+  // ==== IF ALREADY ZERO, END IMMEDIATELY ====
+  if (pomState.remaining <= 0) {
+    pomState.remaining = 0;
+    setRingProgress(0); 
+    updatePomUI();
+    stopPomInternal();
+    handleSessionComplete();
+    return;
+  }
+
+  // Count down
   pomState.remaining--;
 
-  // 🔔 30 seconds remaining notification
+  // ==== HIT ZERO THIS TICK → END SESSION ====
+  if (pomState.remaining <= 0) {
+    pomState.remaining = 0;
+    setRingProgress(0);
+    updatePomUI();
+    stopPomInternal();
+    handleSessionComplete();
+    return;
+  }
+
+  // Update UI
+  updatePomUI();
+
+  // ==== RING PROGRESS ====
+  let percent = pomState.remaining / pomTotalSeconds;
+  if (percent < 0) percent = 0;
+  setRingProgress(percent);
+
+  // ==== 30s NOTIFICATION ====
   if (pomState.remaining === 30 && state.pomSettings.notifications) {
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification("⏳ 30 seconds left!", {
-        body: "Your session is about to end. Wrap up your work!",
+        body: "Your session is about to end.",
         icon: state.user.photoURL || "logo.png"
       });
     }
-
-    // Optional tiny beep
-    try {
-      AudioManager.play("soft-ding.mp3");
-    } catch (_) {}
+    try { AudioManager.play("soft-ding.mp3"); } catch (_) {}
   }
 
-  updatePomUI();
-
-  if (pomState.remaining <= 0) {
-    stopPomInternal();
-    handleSessionComplete();
-  }
-
-if (pomState.mode === "focus" && pomState.remaining > 0 && pomState.remaining % 60 === 59) {
+  // ==== TASK TIME TRACKING ====
+  if (pomState.mode === "focus" && pomState.remaining % 60 === 59) {
     incrementTaskTime();
+  }
 }
 
 
+
+// RING PROGRESS SETUP
+let ring;
+let circumference; // ⭐ ADD THIS LINE
+
+function initRing() {
+  ring = document.getElementById("pomProgressRing");
+  if (!ring) {
+    console.error("❌ Ring element not found!");
+    return;
+  }
+  const radius = 140;
+  circumference = 2 * Math.PI * radius; // ⭐ REMOVE 'const' so it's accessible globally
+  ring.style.strokeDasharray = `${circumference}`;
+  ring.style.strokeDashoffset = `${circumference}`;
 }
 
+function setRingProgress(percentage) {
+  if (!ring || !circumference) return; // ⭐ ADD SAFETY CHECK
+  const offset = circumference - (percentage * circumference);
+  ring.style.strokeDashoffset = offset;
+}
 
 function stopPomInternal() {
   if (pomTimerId) {
@@ -621,38 +792,140 @@ function initPomodoroControls() {
 }
 
 async function handleSessionComplete() {
-  AudioManager.stop();
+  console.log("🎉 SESSION COMPLETE - START");
 
-  if (pomState.mode === 'focus') {
-    state.user.coins = (state.user.coins || 0) + 10;
-    state.focusHours = (state.focusHours || 0) + ((state.pomSettings?.focus || 25) / 60);
-    pomState.sessionsCompleted++;
+  // FORCE STOP TIMER
+  if (pomTimerId) {
+    clearInterval(pomTimerId);
+    pomTimerId = null;
+  }
+  pomState.running = false;
+
+  const isFocus = pomState.mode === "focus";
+  console.log("Is Focus:", isFocus);
+
+  if (isFocus) {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // UPDATE COINS
+    const oldCoins = state.user.coins || 0;
+    state.user.coins = oldCoins + 10;
+    console.log(`Coins: ${oldCoins} → ${state.user.coins}`);
+
+    // UPDATE FOCUS HOURS
+    const mins = state.pomSettings.focus || 25;
+    state.focusHours = (state.focusHours || 0) + (mins / 60);
+
+    try {
+      const statsRef = todayStatsRef(user.uid);
+      const statsSnap = await getDoc(statsRef);
+      
+      let newSessionCount = 1;
+      let newFocusMinutes = mins;
+      
+      if (statsSnap.exists()) {
+        const currentData = statsSnap.data();
+        newSessionCount = (currentData.sessionsCompleted || 0) + 1;
+        newFocusMinutes = (currentData.focusMinutes || 0) + mins;
+      }
+      
+      console.log('💾 Saving stats:', {
+        sessions: newSessionCount,
+        minutes: newFocusMinutes
+      });
+
+      // ⭐ UPDATE LOCAL STATE **FIRST**
+      state.sessionsToday = newSessionCount;
+      state.focusHoursToday = newFocusMinutes / 60;
+
+           updateSessionStatsUI();
+
+      // Save to dailyStats
+      await setDoc(statsRef, {
+        date: new Date().toISOString().split("T")[0],
+        sessionsCompleted: newSessionCount,
+        focusMinutes: newFocusMinutes,
+        lastUpdated: Date.now()
+      }, { merge: true });
+
+ 
+
+      // ⭐ NOW UPDATE UI (after state is updated)
+      const coinsEl = document.getElementById('ui-coins');
+      if (coinsEl) coinsEl.textContent = state.user.coins;
+      
+      const sessionsEl = document.getElementById('PomodoroSessionsToday');
+      if (sessionsEl) {
+        sessionsEl.textContent = state.sessionsToday;
+        console.log('✅ UI updated to:', state.sessionsToday);
+      }
+      
+      const focusEl = document.getElementById('pomTotalFocus');
+      if (focusEl) focusEl.textContent = `${state.focusHoursToday.toFixed(1)}h`;
+
+      // Update user document (all-time stats)
+      await updateDoc(doc(db, 'users', user.uid), {
+        coins: state.user.coins,
+        totalFocusHours: state.focusHours
+      });
+
+      // Add session history entry
+      await addDoc(collection(db, "users", user.uid, "sessions"), {
+        type: "focus",
+        minutes: mins,
+        timestamp: Date.now(),
+        taskId: state.currentTaskId || null,
+        taskName: state.currentTaskId ? tasks.find(t => t.id === state.currentTaskId)?.text : null
+      });
+
+      console.log("✅ Saved to Firestore");
+      
+      // Reload recent sessions
+      await loadRecentSessions();
+      
+    } catch (err) {
+      console.error("Firestore error:", err);
+    }
+  }
+
+  // PLAY SOUND
+  const soundType = state.pomSettings?.soundType || 'chime';
+  let soundFile = soundMap[soundType] || 'chime.mp3';
+
+  try {
+    const audio = new Audio(soundFile);
+    audio.volume = 1.0;
+    audio.play().catch(err => console.error("Audio play failed:", err));
+  } catch (err) {
+    console.error("Audio error:", err);
+  }
+
+  // SET NEXT MODE
+  if (isFocus) {
+    setPomMode("short");
+    toast("🎉 Session complete! Take a break.");
     
-    const nowLabel = new Date().toLocaleString();
-    const historyItem = document.createElement('div');
-    historyItem.className = 'flex items-center justify-between text-sm';
-    historyItem.innerHTML = `<div class="flex items-center gap-3"><div class="w-2 h-2 rounded-full bg-green-500"></div><span class="text-slate-600">Focus — ${(state.pomSettings?.focus || 25)}m</span></div><span class="text-slate-400">${nowLabel}</span>`;
-    pomHistoryWrap?.prepend(historyItem);
-
-    if (pomState.sessionsCompleted % (state.pomSettings.sessionsBeforeLong || 4) === 0) setPomMode('long');
-    else setPomMode('short');
+    // Confetti celebration
+    if (window.confetti) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    }
   } else {
-    setPomMode('focus');
+    setPomMode("focus");
+    toast("✅ Break over! Ready to focus.");
   }
 
-  const { soundType, sound } = state.pomSettings || {};
-  const src = (soundType === 'custom' && sound) ? sound : (soundMap[soundType] || null);
-  if (src) {
-    AudioManager.play(src, { loop: false });
-  }
+  // RESET BUTTON
+  if (pomStartBtn) pomStartBtn.textContent = 'Start Session';
+  if (pomPauseBtn) pomPauseBtn.disabled = true;
 
-  try { await saveUserState(); } catch (e) { console.warn('saveUserState failed', e); }
-
-  updateProfileUI();
-  updateKpis();
-  updatePomUI();
-  toast('Session complete — well done!');
+  console.log("🏁 SESSION COMPLETE - END");
 }
+
 
 /* ----------------- Settings UI ----------------- */
 function loadSettingsUI() {
@@ -660,6 +933,8 @@ function loadSettingsUI() {
   if (shortBreakInput) shortBreakInput.value = state.pomSettings.short || defaultPomSettings.short;
   if (longBreakInput) longBreakInput.value = state.pomSettings.long || defaultPomSettings.long;
   if (soundSelect) soundSelect.value = state.pomSettings.soundType || defaultPomSettings.soundType;
+  if (autoStartToggle)
+  autoStartToggle.checked = !!state.pomSettings.autoStart;
 }
 
 function initSettingsControls() {
@@ -679,6 +954,12 @@ function initSettingsControls() {
     const v = Number(e.target.value || defaultPomSettings.long);
     state.pomSettings.long = Math.max(1, v);
     setPomMode(pomState.mode);
+  });
+
+  // ⭐ MOVED OUTSIDE - was nested incorrectly
+  autoStartToggle?.addEventListener('change', (e) => {
+    state.pomSettings.autoStart = e.target.checked;
+    toast(`Auto-start ${e.target.checked ? "enabled" : "disabled"}`);
   });
 
   soundSelect?.addEventListener('change', (e) => {
@@ -757,27 +1038,38 @@ function renderPlan(plan) {
   container.innerHTML = '';
 
   // Header
-  const header = document.createElement('div');
-  header.className = 'text-sm text-slate-600 mb-4 font-medium';
-  header.textContent = `Generated ${plan.meta.days}-day plan for ${plan.meta.subjects.join(', ')} — ${plan.meta.hoursPerDay}h/day`;
-  container.appendChild(header);
+  container.innerHTML = `
+    <div class="text-sm text-slate-600 mb-4 font-medium">
+      Generated ${plan.meta.days}-day plan for ${plan.meta.subjects.join(', ')} — ${plan.meta.hoursPerDay}h/day
+    </div>
+  `;
 
-  // Create grid container with columns
-  const gridContainer = document.createElement('div');
-  gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
-  
-  // Flatten all slots from all days
-  plan.days.forEach(d => {
-    // Day header as a grid item
-    const dayHeader = document.createElement('div');
-    dayHeader.className = 'col-span-full pt-4 pb-2 border-b-2 border-slate-200';
-    dayHeader.innerHTML = `<h3 class="text-lg font-bold text-slate-800">Day ${d.day}</h3>`;
-    gridContainer.appendChild(dayHeader);
+  // MAIN WRAPPER – FULL WIDTH
+  const main = document.createElement('div');
+  main.className = "w-full flex flex-col gap-10";
 
-    // Add all slots for this day
-    d.slots.forEach(slot => {
-      const subjectLower = (slot.subject || "").toLowerCase();
-      const topicLower = (slot.topic || slot.note || "").toLowerCase();
+  // LOOP DAYS
+  plan.days.forEach((day) => {
+    const dayWrap = document.createElement('div');
+    dayWrap.className = "w-full";
+
+    // Day Header + Buttons
+    dayWrap.innerHTML = `
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-slate-800 text-xl">Day ${day.day}</h3>
+      </div>
+    `;
+
+    // GRID – MULTI-COLUMN – AUTO WRAP – MAX 6 PER COL
+    const grid = document.createElement('div');
+    grid.className =
+      "grid gap-4 " +
+      "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+
+    // Process slots
+    day.slots.forEach((slot) => {
+      const subjectLower = slot.subject.toLowerCase();
+      const topicLower = (slot.topic || "").toLowerCase();
 
       const isBreak =
         subjectLower.includes("break") ||
@@ -787,103 +1079,505 @@ function renderPlan(plan) {
         subjectLower.includes("dinner") ||
         subjectLower.includes("nap") ||
         subjectLower.includes("meal") ||
-        subjectLower.includes("snack") ||
-        subjectLower.includes("stretch") ||
         topicLower.includes("break") ||
         topicLower.includes("rest") ||
         topicLower.includes("free") ||
         topicLower.includes("lunch") ||
         topicLower.includes("dinner") ||
-        topicLower.includes("nap") ||
         topicLower.includes("meal") ||
-        topicLower.includes("snack") ||
-        topicLower.includes("stretch");
+        topicLower.includes("nap");
 
-      const slotEl = document.createElement('div');
-      slotEl.className = 'p-4 rounded-xl shadow-sm border transition-all hover:shadow-md hover:-translate-y-[1px]';
-      
+      const card = document.createElement('div');
+
+      // UNIFIED CARD STYLE
+      card.className =
+        "timetable-card p-5 rounded-xl shadow-sm border transition-all hover:shadow-md hover:-translate-y-[1px]";
+
+      // Break styling
       if (isBreak) {
-        slotEl.style.background = "rgba(255, 220, 50, 0.15)";
-        slotEl.style.border = "1px dashed #fbbf24";
+        card.classList.add("bg-yellow-50", "border-yellow-300", "border-dashed");
       } else {
-        slotEl.style.background = "#ffffff";
-        slotEl.style.border = "1px solid #e2e8f0";
+        card.classList.add("bg-white", "border-slate-200");
       }
 
-      slotEl.innerHTML = `
+      card.innerHTML = `
         <div class="font-semibold text-slate-700 mb-1">
           ${slot.time} • ${escapeHtml(slot.subject)}
         </div>
         <div class="text-xs text-slate-500 leading-snug">
-          ${escapeHtml(slot.topic || slot.note || '')}
+          ${escapeHtml(slot.topic || '')}
         </div>
       `;
 
-      gridContainer.appendChild(slotEl);
+      grid.appendChild(card);
     });
+
+    dayWrap.appendChild(grid);
+    main.appendChild(dayWrap);
   });
 
-  container.appendChild(gridContainer);
+  container.appendChild(main);
 }
 
+
 async function plannerToPDF() {
-  const timetable = document.getElementById("timetable");
-  if (!timetable) return toast("No timetable to export");
+  const container = document.getElementById("plannerResult");
+  if (!container || !container.querySelector('.timetable-card')) {
+    return toast("Generate a plan first!");
+  }
 
-  const pdf = new window.jsPDF('p', 'pt', 'a4');
-  let y = 40;
+  // Check if jsPDF is available
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (!jsPDF) {
+    return toast("PDF library not loaded. Please refresh the page.");
+  }
 
+  const pdf = new jsPDF('p', 'pt', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = 60;
+
+  // ========== HEADER SECTION ==========
+  // Gradient background (simulated with rectangles)
+  pdf.setFillColor(114, 89, 236); // Purple
+  pdf.rect(0, 0, pageWidth, 100, 'F');
+  
+  pdf.setFillColor(198, 102, 247); // Pink gradient
+  pdf.rect(0, 60, pageWidth, 40, 'F');
+
+  // Title
+  pdf.setTextColor(255, 255, 255);
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(18);
-  pdf.text("Timora Study Plan", 40, y);
-  y += 30;
+  pdf.setFontSize(28);
+  pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
+  
+  // Subtitle
+  pdf.setFontSize(12);
+  pdf.setFont("helvetica", "normal");
+  const date = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  pdf.text(`Generated on ${date}`, pageWidth / 2, 75, { align: 'center' });
 
-  timetable.querySelectorAll("div").forEach(block => {
-    const text = block.innerText.trim();
-    if (!text) return;
+  y = 130;
 
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(12);
+  // ========== CONTENT SECTION ==========
+  const dayWrappers = container.querySelectorAll('div.w-full');
+  let dayCount = 0;
+  
+  dayWrappers.forEach((dayWrap) => {
+    const dayHeader = dayWrap.querySelector('h3');
+    if (!dayHeader) return;
+    
+    dayCount++;
 
-    const lines = pdf.splitTextToSize(text, 520);
-    pdf.text(lines, 40, y);
-    y += lines.length * 14 + 10;
-
-    if (y > 750) {
+    // Check if we need a new page
+    if (y > pageHeight - 100) {
       pdf.addPage();
       y = 40;
     }
+
+    // ===== DAY HEADER BOX =====
+    pdf.setFillColor(245, 247, 250); // Light gray background
+    pdf.roundedRect(30, y - 5, pageWidth - 60, 35, 5, 5, 'F');
+    
+    // Day number circle
+    pdf.setFillColor(114, 89, 236);
+    pdf.circle(50, y + 12, 15, 'F');
+    
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(14);
+    pdf.text(dayCount.toString(), 50, y + 16, { align: 'center' });
+
+    // Day text
+    pdf.setTextColor(30, 41, 59);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.text(dayHeader.textContent.trim(), 75, y + 16);
+
+    y += 50;
+
+    // ===== TASK CARDS =====
+    const cards = dayWrap.querySelectorAll('.timetable-card');
+    
+    if (cards.length === 0) {
+      pdf.setFont("helvetica", "italic");
+      pdf.setFontSize(10);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text("No tasks scheduled for this day", 50, y);
+      y += 30;
+    } else {
+      cards.forEach((card, index) => {
+        const semiboldDiv = card.querySelector('.font-semibold');
+        const textXsDiv = card.querySelector('.text-xs');
+        
+        const header = semiboldDiv ? semiboldDiv.textContent.trim() : '';
+        const topic = textXsDiv ? textXsDiv.textContent.trim() : '';
+        
+        if (!header) return;
+
+        // Check for break
+        const isBreak = header.toLowerCase().includes('break') || 
+                       header.toLowerCase().includes('lunch') ||
+                       header.toLowerCase().includes('dinner') ||
+                       topic.toLowerCase().includes('break');
+        
+        // Check if we need a new page
+        if (y > pageHeight - 80) {
+          pdf.addPage();
+          y = 40;
+        }
+
+        // ===== TASK CARD DESIGN =====
+        // Card background with shadow effect
+        pdf.setFillColor(250, 250, 250);
+        pdf.roundedRect(45, y - 3, pageWidth - 90, 52, 4, 4, 'F');
+        
+        // Left border (color coded)
+        if (isBreak) {
+          pdf.setFillColor(251, 191, 36); // Yellow for breaks
+        } else {
+          // Alternate colors for subjects
+          const colors = [
+            [139, 92, 246],  // Purple
+            [59, 130, 246],  // Blue
+            [16, 185, 129],  // Green
+            [239, 68, 68]    // Red
+          ];
+          const color = colors[index % colors.length];
+          pdf.setFillColor(color[0], color[1], color[2]);
+        }
+        pdf.roundedRect(45, y - 3, 6, 52, 2, 2, 'F');
+
+        // Task icon (bullet point)
+        pdf.setFillColor(100, 116, 139);
+        pdf.circle(62, y + 12, 3, 'F');
+
+        // Task header (time + subject)
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(30, 41, 59);
+        
+        const headerLines = pdf.splitTextToSize(header, pageWidth - 130);
+        pdf.text(headerLines, 72, y + 14);
+        
+        let textHeight = headerLines.length * 12;
+
+        // Task description
+        if (topic) {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(100, 116, 139);
+          
+          const topicLines = pdf.splitTextToSize(topic, pageWidth - 130);
+          pdf.text(topicLines, 72, y + 14 + textHeight);
+        }
+        
+        y += 60;
+      });
+    }
+    
+    // Space between days
+    y += 15;
   });
 
+  // ========== FOOTER ==========
+  const totalPages = pdf.internal.getNumberOfPages();
+  
+  for (let i = 1; i <= totalPages; i++) {
+    pdf.setPage(i);
+    
+    // Footer line
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setLineWidth(1);
+    pdf.line(30, pageHeight - 40, pageWidth - 30, pageHeight - 40);
+    
+    // Footer text
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(148, 163, 184);
+    pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 25, { align: 'center' });
+    pdf.text('Generated by Timora', pageWidth - 35, pageHeight - 25, { align: 'right' });
+    pdf.text('timora.app', 35, pageHeight - 25);
+  }
+
   pdf.save("Timora_Study_Plan.pdf");
-  toast("PDF downloaded");
+  toast("✅ Premium PDF downloaded!");
+}
+
+async function sharePlannerPDF() {
+  const container = document.getElementById("plannerResult");
+  if (!container || !container.querySelector('.timetable-card')) {
+    return toast("Generate a plan first!");
+  }
+
+  // Show modal
+  const modal = $('#shareModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  $('#shareLoading').classList.remove('hidden');
+  $('#shareSuccess').classList.add('hidden');
+
+  try {
+    const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+    if (!jsPDF) throw new Error("PDF library not loaded");
+
+    // 📌 GENERATE THE PREMIUM PDF EXACTLY LIKE plannerToPDF()
+    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let y = 60;
+
+    pdf.setFillColor(114, 89, 236);
+    pdf.rect(0, 0, pageWidth, 100, 'F');
+
+    pdf.setFillColor(198, 102, 247);
+    pdf.rect(0, 60, pageWidth, 40, 'F');
+
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(28);
+    pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
+
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+
+    const date = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric'
+    });
+
+    pdf.text(`Generated on ${date}`, pageWidth / 2, 75, { align: 'center' });
+
+    y = 130;
+
+    const dayWrappers = container.querySelectorAll('div.w-full');
+    let dayCount = 0;
+
+    dayWrappers.forEach((dayWrap) => {
+      const dayHeader = dayWrap.querySelector("h3");
+      if (!dayHeader) return;
+
+      dayCount++;
+
+      if (y > pageHeight - 100) {
+        pdf.addPage();
+        y = 40;
+      }
+
+      pdf.setFillColor(245, 247, 250);
+      pdf.roundedRect(30, y - 5, pageWidth - 60, 35, 5, 5, 'F');
+
+      pdf.setFillColor(114, 89, 236);
+      pdf.circle(50, y + 12, 15, 'F');
+
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(14);
+      pdf.text(dayCount.toString(), 50, y + 16, { align: "center" });
+
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFontSize(16);
+      pdf.text(dayHeader.textContent.trim(), 75, y + 16);
+
+      y += 50;
+
+      const cards = dayWrap.querySelectorAll(".timetable-card");
+
+      cards.forEach((card, index) => {
+        const header = card.querySelector(".font-semibold")?.textContent.trim() || "";
+        const topic = card.querySelector(".text-xs")?.textContent.trim() || "";
+
+        if (!header) return;
+
+        if (y > pageHeight - 80) {
+          pdf.addPage();
+          y = 40;
+        }
+
+        const isBreak = header.toLowerCase().includes("break") ||
+                        header.toLowerCase().includes("lunch") ||
+                        header.toLowerCase().includes("dinner") ||
+                        topic.toLowerCase().includes("break");
+
+        pdf.setFillColor(250, 250, 250);
+        pdf.roundedRect(45, y - 3, pageWidth - 90, 52, 4, 4, "F");
+
+        if (isBreak) {
+          pdf.setFillColor(251, 191, 36);
+        } else {
+          const colors = [
+            [139, 92, 246],
+            [59, 130, 246],
+            [16, 185, 129],
+            [239, 68, 68]
+          ];
+          const c = colors[index % colors.length];
+          pdf.setFillColor(c[0], c[1], c[2]);
+        }
+
+        pdf.roundedRect(45, y - 3, 6, 52, 2, 2, "F");
+
+        pdf.setFillColor(100, 116, 139);
+        pdf.circle(62, y + 12, 3, "F");
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(30, 41, 59);
+
+        const headerLines = pdf.splitTextToSize(header, pageWidth - 130);
+        pdf.text(headerLines, 72, y + 14);
+
+        let textH = headerLines.length * 12;
+
+        if (topic) {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(100, 116, 139);
+
+          const topicLines = pdf.splitTextToSize(topic, pageWidth - 130);
+          pdf.text(topicLines, 72, y + 14 + textH);
+        }
+
+        y += 60;
+      });
+
+      y += 15;
+    });
+
+    // FOOTER
+    const totalPages = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(30, pageHeight - 40, pageWidth - 30, pageHeight - 40);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 25, { align: "center" });
+      pdf.text("Generated by Timora", pageWidth - 35, pageHeight - 25, { align: "right" });
+      pdf.text("timora.app", 35, pageHeight - 25);
+    }
+
+    // PDF → Blob
+    const pdfBlob = pdf.output("blob");
+
+    // Convert to Base64
+    const base64 = await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result);
+      r.readAsDataURL(pdfBlob);
+    });
+
+    const user = auth.currentUser;
+    if (!user) throw new Error("Login required");
+
+    // Upload to Firestore
+    const shareDoc = await addDoc(collection(db, "shared-plans"), {
+      userId: user.uid,
+      userName: user.displayName || "Anonymous",
+      pdfData: base64,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    });
+
+    const shareLink = `${window.location.origin}/view-plan.html?id=${shareDoc.id}`;
+
+    $('#shareLoading').classList.add('hidden');
+    $('#shareSuccess').classList.remove('hidden');
+    $('#shareLink').value = shareLink;
+
+    toast("Share link generated!");
+    
+  } catch (err) {
+    console.error(err);
+    toast("PDF share failed");
+    modal.classList.add('hidden');
+  }
+}
+
+
+// Copy link function
+function copyShareLink() {
+  const input = $('#shareLink');
+  input.select();
+  document.execCommand('copy');
+  
+  const btn = $('#copyLinkBtn');
+  btn.textContent = 'Copied!';
+  btn.classList.add('bg-green-500');
+  
+  setTimeout(() => {
+    btn.textContent = 'Copy';
+    btn.classList.remove('bg-green-500');
+  }, 2000);
+  
+  toast('📋 Link copied to clipboard!');
+}
+
+// Social share functions
+function shareViaWhatsApp() {
+  const link = $('#shareLink').value;
+  const text = encodeURIComponent(`Check out my Timora Study Plan: ${link}`);
+  window.open(`https://wa.me/?text=${text}`, '_blank');
+}
+
+function shareViaEmail() {
+  const link = $('#shareLink').value;
+  const subject = encodeURIComponent('My Study Plan from Timora');
+  const body = encodeURIComponent(`Hi,\n\nCheck out my study plan created with Timora:\n\n${link}\n\nBest regards`);
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+function shareViaTwitter() {
+  const link = $('#shareLink').value;
+  const text = encodeURIComponent(`Just created my study plan with @Timora 📚✨ Check it out:`);
+  window.open(`https://twitter.com/intent/tweet?text=${text}&url=${link}`, '_blank');
 }
 
 async function importPlannerToPomodoro() {
   const user = firebaseAuth.currentUser;
   if (!user) return toast("Login required");
 
-  const timetable = document.getElementById("timetable");
-  if (!timetable) return toast("No plan available");
+  const container = document.getElementById("plannerResult");
+  if (!container || !container.querySelector('.timetable-card')) {
+    return toast("Generate a plan first!");
+  }
 
   let added = 0;
 
-  timetable.querySelectorAll(".p-6").forEach(card => {
-    const subject = card.querySelector("h4")?.innerText || "Task";
-    const isBreak =
-      subject.toLowerCase().includes("break") ||
-      subject.toLowerCase().includes("rest");
+  container.querySelectorAll(".timetable-card").forEach(card => {
+    const header = card.querySelector("div.font-semibold")?.innerText || "";
+    const topic = card.querySelector("div.text-xs")?.innerText || "";
+
+    // Skip breaks
+    const isBreak = 
+      header.toLowerCase().includes("break") || 
+      header.toLowerCase().includes("rest") ||
+      header.toLowerCase().includes("lunch") ||
+      header.toLowerCase().includes("dinner") ||
+      header.toLowerCase().includes("nap") ||
+      topic.toLowerCase().includes("break");
 
     if (isBreak) return;
 
-    const topic = card.querySelector("p")?.innerText || "";
-    const finalText = `${subject} — ${topic}`;
-
-    addTask(finalText);
+    // Add task
+    addTask(`${header} — ${topic}`);
     added++;
   });
 
-  toast(`Imported ${added} tasks into Pomodoro`);
+  if (added > 0) {
+    toast(`✅ Imported ${added} tasks to Pomodoro!`);
+    // Optional: switch to Pomodoro section
+    setTimeout(() => showSection('pomodoro'), 500);
+  } else {
+    toast("No tasks to import");
+  }
 }
 
 
@@ -891,6 +1585,25 @@ async function importPlannerToPomodoro() {
 function initPlanner() {
   const btn = document.getElementById('genAIPlan');
   const result = document.getElementById('plannerResult');
+  
+  // Add PDF download listener
+  $('#plannerPdfBtn')?.addEventListener('click', plannerToPDF);
+  
+  // Add import to Pomodoro listener
+  $('#plannerImportBtn')?.addEventListener('click', importPlannerToPomodoro);
+
+  $('#plannerShareBtn')?.addEventListener('click', sharePlannerPDF);
+  
+  // NEW: Share modal listeners
+  $('#closeShareModal')?.addEventListener('click', () => {
+    $('#shareModal').classList.add('hidden');
+    $('#shareModal').classList.remove('flex');
+  });
+  
+  $('#copyLinkBtn')?.addEventListener('click', copyShareLink);
+  $('#shareWhatsapp')?.addEventListener('click', shareViaWhatsApp);
+  $('#shareEmail')?.addEventListener('click', shareViaEmail);
+  $('#shareTwitter')?.addEventListener('click', shareViaTwitter);
 
   btn?.addEventListener('click', async (ev) => {
     ev.preventDefault();
@@ -1262,6 +1975,10 @@ function setupAuthListener() {
     // Load user data initially
     await loadUserDataOnce(user.uid);
 
+        // await loadTodayStats(user.uid);
+
+            await loadRecentSessions();
+
     // Setup realtime listener
     const ref = userDocRef(user.uid);
     if (userUnsub) {
@@ -1303,7 +2020,73 @@ function setupAuthListener() {
     } catch (e) {
       console.warn('Realtime listener error', e);
     }
+// Setup realtime listener for today's stats
+const statsRef = todayStatsRef(user.uid);
+console.log('🔊 Setting up stats listener for:', statsRef.path);
 
+const unsubStats = onSnapshot(statsRef, (snap) => {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`\n🔔 [${timestamp}] STATS SNAPSHOT FIRED`);
+  console.log('   Exists:', snap.exists());
+  
+  if (!snap.exists()) {
+    console.log('   ⚠️ Doc does not exist, keeping current state');
+    console.log('   Current state.sessionsToday:', state.sessionsToday);
+    return;
+  }
+  
+  const data = snap.data();
+  console.log('   📦 Raw data:', JSON.stringify(data, null, 2));
+  console.log('   📊 sessionsCompleted:', data.sessionsCompleted);
+  console.log('   📊 focusMinutes:', data.focusMinutes);
+  
+  // BEFORE update
+  console.log('   ⏪ BEFORE - state.sessionsToday:', state.sessionsToday);
+  
+  // Update state
+  if (typeof data.sessionsCompleted === 'number') {
+    state.sessionsToday = data.sessionsCompleted;
+    console.log('   ✅ AFTER - state.sessionsToday:', state.sessionsToday);
+  } else {
+    console.log('   ❌ sessionsCompleted is NOT a number!');
+  }
+  
+  if (typeof data.focusMinutes === 'number') {
+    state.focusHoursToday = data.focusMinutes / 60;
+    console.log('   ✅ focusHoursToday set to:', state.focusHoursToday);
+  }
+
+  updateSessionStatsUI();
+  
+  /// Update ALL session count elements across ALL sections
+console.log('   🎯 Updating UI elements...');
+
+// Update Pomodoro section
+const sessionsEl = document.getElementById('PomodoroSessionsToday');
+if (sessionsEl) {
+  console.log('   📍 Pomodoro element before:', sessionsEl.textContent);
+  sessionsEl.textContent = String(state.sessionsToday);
+  console.log('   ✅ Pomodoro element after:', sessionsEl.textContent);
+}
+
+// Update pomSessionCountEl (if it's different)
+if (pomSessionCountEl && pomSessionCountEl !== sessionsEl) {
+ 
+  console.log('   ✅ pomSessionCountEl updated');
+}
+
+// Update focus hours
+if (pomTotalFocusEl) {
+  pomTotalFocusEl.textContent = `${state.focusHoursToday.toFixed(1)}h`;
+  console.log('   ✅ Focus hours updated');
+}
+
+console.log('   🏁 All UI elements updated');
+  
+  console.log('   🏁 Snapshot processing complete\n');
+}, (error) => {
+  console.error('❌ Stats listener error:', error);
+});
     // Load projects from subcollection
    // Load projects
 try {
@@ -1347,6 +2130,9 @@ function initializeDashboard() {  // ← Changed name
    unlockAudio();  // ← Add this line
   // Initialize DOM references
   initDOMReferences();
+
+  // ⭐ ADD THIS LINE:
+  initRing();
   
   // Initialize navigation
   initNavigation();
@@ -1358,6 +2144,7 @@ function initializeDashboard() {  // ← Changed name
   initPlanner();
   initProjects();
   initSubscriptions();
+ 
   initOrderModal();
   initQuickActions();
   initLogout();
@@ -1376,6 +2163,9 @@ function initializeDashboard() {  // ← Changed name
   
   // Load leaderboard
   populateLeaderboard().catch(e => console.warn('leaderboard fetch failed', e));
+
+    // ← ADD THIS HERE
+  loadRecentSessions();
   
   toast('Dashboard ready — live with Firebase');
   console.log('Dashboard initialization complete');
@@ -1386,11 +2176,7 @@ function initializeDashboard() {  // ← Changed name
   if (!val) return toast("Task cannot be empty");
   addTask(val);
 
-  input.value = "";
-
-  document.getElementById("plannerPdfBtn")?.addEventListener("click", plannerToPDF);
-document.getElementById("plannerImportBtn")?.addEventListener("click", importPlannerToPomodoro);
-
+  input.value = ""
   
 });
 
@@ -1426,6 +2212,8 @@ loadTasks();  // load tasks on dashboard load
 
 // Start initialization
 window.addEventListener("load", init);
+
+
 
 /* ----------------- Debug API ----------------- */
 window.Timora = {
