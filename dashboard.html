@@ -6,6 +6,7 @@
   <title>Timora — Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script type="module">
   // Firebase SDK imports
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
@@ -681,17 +682,43 @@
 
               <!-- Preview Cards (Right Side) -->
               <div class="lg:col-span-2">
-                <div class="flex items-center justify-between mb-6">
-                  <h3 class="font-bold text-slate-800 text-xl">Preview — Day 1</h3>
-                  <div class="flex gap-2">
-                    <button class="px-4 py-2 rounded-lg bg-white border-2 border-slate-200 text-sm font-medium hover:border-[var(--primary)] transition-all">
-                      ← Prev
-                    </button>
-                    <button class="px-4 py-2 rounded-lg bg-white border-2 border-slate-200 text-sm font-medium hover:border-[var(--primary)] transition-all">
-                      Next →
-                    </button>
-                  </div>
-                </div>
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+
+  <h3 class="font-bold text-slate-800 text-2xl">
+    Preview — Day <span id="plannerDayLabel">1</span>
+  </h3>
+
+  <div class="flex flex-wrap items-center gap-3">
+
+    <button id="plannerPdfBtn"
+      class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500
+             text-white text-sm font-semibold shadow hover:scale-105 transition">
+      Download PDF
+    </button>
+
+    <button id="plannerImportBtn"
+      class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 
+             text-white text-sm font-semibold shadow hover:scale-105 transition">
+      Import to Pomodoro
+    </button>
+
+    <button id="plannerPrevBtn"
+      class="px-4 py-2 rounded-lg bg-white border-2 border-slate-200 
+             text-sm font-medium hover:border-[var(--primary)] transition-all">
+      ← Prev
+    </button>
+
+    <button id="plannerNextBtn"
+      class="px-4 py-2 rounded-lg bg-white border-2 border-slate-200 
+             text-sm font-medium hover:border-[var(--primary)] transition-all">
+      Next →
+    </button>
+
+  </div>
+
+</div>
+
+
 
                 <div id="timetable" class="grid md:grid-cols-2 gap-4">
                   <!-- Default blocks -->
