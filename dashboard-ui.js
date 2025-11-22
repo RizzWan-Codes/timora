@@ -826,6 +826,67 @@ function renderPlan(plan) {
   container.appendChild(gridContainer);
 }
 
+async function plannerToPDF() {
+  const timetable = document.getElementById("timetable");
+  if (!timetable) return toast("No timetable to export");
+
+  const pdf = new window.jsPDF('p', 'pt', 'a4');
+  let y = 40;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(18);
+  pdf.text("Timora Study Plan", 40, y);
+  y += 30;
+
+  timetable.querySelectorAll("div").forEach(block => {
+    const text = block.innerText.trim();
+    if (!text) return;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(12);
+
+    const lines = pdf.splitTextToSize(text, 520);
+    pdf.text(lines, 40, y);
+    y += lines.length * 14 + 10;
+
+    if (y > 750) {
+      pdf.addPage();
+      y = 40;
+    }
+  });
+
+  pdf.save("Timora_Study_Plan.pdf");
+  toast("PDF downloaded");
+}
+
+async function importPlannerToPomodoro() {
+  const user = firebaseAuth.currentUser;
+  if (!user) return toast("Login required");
+
+  const timetable = document.getElementById("timetable");
+  if (!timetable) return toast("No plan available");
+
+  let added = 0;
+
+  timetable.querySelectorAll(".p-6").forEach(card => {
+    const subject = card.querySelector("h4")?.innerText || "Task";
+    const isBreak =
+      subject.toLowerCase().includes("break") ||
+      subject.toLowerCase().includes("rest");
+
+    if (isBreak) return;
+
+    const topic = card.querySelector("p")?.innerText || "";
+    const finalText = `${subject} — ${topic}`;
+
+    addTask(finalText);
+    added++;
+  });
+
+  toast(`Imported ${added} tasks into Pomodoro`);
+}
+
+
 
 function initPlanner() {
   const btn = document.getElementById('genAIPlan');
@@ -1326,6 +1387,10 @@ function initializeDashboard() {  // ← Changed name
   addTask(val);
 
   input.value = "";
+
+  document.getElementById("plannerPdfBtn")?.addEventListener("click", plannerToPDF);
+document.getElementById("plannerImportBtn")?.addEventListener("click", importPlannerToPomodoro);
+
   
 });
 
