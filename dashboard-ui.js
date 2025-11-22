@@ -756,83 +756,74 @@ function renderPlan(plan) {
   if (!container) return;
   container.innerHTML = '';
 
+  // Header
   const header = document.createElement('div');
-  header.className = 'text-sm text-slate-600 mb-2';
+  header.className = 'text-sm text-slate-600 mb-4 font-medium';
   header.textContent = `Generated ${plan.meta.days}-day plan for ${plan.meta.subjects.join(', ')} — ${plan.meta.hoursPerDay}h/day`;
   container.appendChild(header);
 
+  // Create grid container with columns
+  const gridContainer = document.createElement('div');
+  gridContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
+  
+  // Flatten all slots from all days
   plan.days.forEach(d => {
-    const dayWrap = document.createElement('div');
-   dayWrap.className = 'mt-6 p-5 rounded-xl bg-white border shadow-sm';
+    // Day header as a grid item
+    const dayHeader = document.createElement('div');
+    dayHeader.className = 'col-span-full pt-4 pb-2 border-b-2 border-slate-200';
+    dayHeader.innerHTML = `<h3 class="text-lg font-bold text-slate-800">Day ${d.day}</h3>`;
+    gridContainer.appendChild(dayHeader);
 
-
-    const title = document.createElement('div');
-    title.className = 'font-semibold mb-2';
-    title.textContent = `Day ${d.day}`;
-    dayWrap.appendChild(title);
-
+    // Add all slots for this day
     d.slots.forEach(slot => {
-      const lower = (slot.subject || "").toLowerCase();
-const subjectLower = (slot.subject || "").toLowerCase();
-const topicLower = (slot.topic || slot.note || "").toLowerCase();
+      const subjectLower = (slot.subject || "").toLowerCase();
+      const topicLower = (slot.topic || slot.note || "").toLowerCase();
 
-const isBreak =
-  subjectLower.includes("break") ||
-  subjectLower.includes("rest") ||
-  subjectLower.includes("free") ||
-  subjectLower.includes("lunch") ||
-  subjectLower.includes("dinner") ||
-  subjectLower.includes("nap") ||
-  subjectLower.includes("meal") ||
-  subjectLower.includes("snack") ||
-  subjectLower.includes("stretch") ||
-
-  topicLower.includes("break") ||
-  topicLower.includes("rest") ||
-  topicLower.includes("free") ||
-  topicLower.includes("lunch") ||
-  topicLower.includes("dinner") ||
-  topicLower.includes("nap") ||
-  topicLower.includes("meal") ||
-  topicLower.includes("snack") ||
-  topicLower.includes("stretch");
-
+      const isBreak =
+        subjectLower.includes("break") ||
+        subjectLower.includes("rest") ||
+        subjectLower.includes("free") ||
+        subjectLower.includes("lunch") ||
+        subjectLower.includes("dinner") ||
+        subjectLower.includes("nap") ||
+        subjectLower.includes("meal") ||
+        subjectLower.includes("snack") ||
+        subjectLower.includes("stretch") ||
+        topicLower.includes("break") ||
+        topicLower.includes("rest") ||
+        topicLower.includes("free") ||
+        topicLower.includes("lunch") ||
+        topicLower.includes("dinner") ||
+        topicLower.includes("nap") ||
+        topicLower.includes("meal") ||
+        topicLower.includes("snack") ||
+        topicLower.includes("stretch");
 
       const slotEl = document.createElement('div');
-slotEl.className = `
-  mb-4 
-  p-4 
-  rounded-xl 
-  shadow-sm 
-  bg-white 
-  border 
-  transition-all 
-  hover:shadow-md 
-  hover:-translate-y-[1px]
-`;
-    
-if (isBreak) {
-  slotEl.style.background = "rgba(255, 220, 50, 0.15)";
-  slotEl.style.border = "1px dashed #fbbf24";
-} else {
-  slotEl.style.background = "#ffffff";
-  slotEl.style.border = "1px solid #e2e8f0";
-}
+      slotEl.className = 'p-4 rounded-xl shadow-sm border transition-all hover:shadow-md hover:-translate-y-[1px]';
+      
+      if (isBreak) {
+        slotEl.style.background = "rgba(255, 220, 50, 0.15)";
+        slotEl.style.border = "1px dashed #fbbf24";
+      } else {
+        slotEl.style.background = "#ffffff";
+        slotEl.style.border = "1px solid #e2e8f0";
+      }
 
- slotEl.innerHTML = `
-  <div class="font-semibold text-slate-700 mb-1">
-    ${slot.time} • ${escapeHtml(slot.subject)}
-  </div>
-  <div class="text-xs text-slate-500 leading-snug">
-    ${escapeHtml(slot.topic || slot.note || '')}
-  </div>
-`;
+      slotEl.innerHTML = `
+        <div class="font-semibold text-slate-700 mb-1">
+          ${slot.time} • ${escapeHtml(slot.subject)}
+        </div>
+        <div class="text-xs text-slate-500 leading-snug">
+          ${escapeHtml(slot.topic || slot.note || '')}
+        </div>
+      `;
 
-      dayWrap.appendChild(slotEl);
+      gridContainer.appendChild(slotEl);
     });
-
-    container.appendChild(dayWrap);
   });
+
+  container.appendChild(gridContainer);
 }
 
 
