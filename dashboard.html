@@ -141,16 +141,33 @@
   width: 48px;
   height: 48px;
   border-radius: 9999px;
-  background-color: #e5e7eb;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  position: relative;
+  background: #e5e7eb center/cover no-repeat;
   border: 2px solid #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: #6b7280;
+  text-transform: uppercase;
 }
 
+/* Show initials only when no photo */
+#profilePhoto:empty::before,
+#profilePhoto:not([style*="url"])::before {
+  content: attr(data-initials);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  z-index: 1;
+}
 @keyframes gradientShift {
   0% { background-position: 0% 0%; }
   50% { background-position: 100% 100%; }
@@ -180,9 +197,53 @@
 }
 
 
+/* Add to your <style> section */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+#loadingScreen h1 {
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
+
+#loadingProgress {
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
+
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50 text-slate-900">
+
+  <!-- Loading Screen -->
+<div id="loadingScreen" class="fixed inset-0 z-[9999] flex items-center justify-center bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
+  <div class="text-center">
+    <!-- Animated Logo/Spinner -->
+    <div class="relative w-24 h-24 mx-auto mb-6">
+      <div class="absolute inset-0 rounded-full border-4 border-purple-200"></div>
+      <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-600 animate-spin"></div>
+      <div class="absolute inset-3 rounded-full border-4 border-transparent border-t-pink-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
+      <div class="absolute inset-0 flex items-center justify-center">
+        <span class="text-2xl">⏱️</span>
+      </div>
+    </div>
+    
+    <!-- Brand -->
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+      Timora
+    </h1>
+    
+    <!-- Loading Text -->
+    <p id="loadingText" class="text-slate-500 text-sm">Loading your dashboard...</p>
+    
+    <!-- Progress Bar -->
+    <div class="w-48 h-1.5 bg-slate-200 rounded-full mx-auto mt-4 overflow-hidden">
+      <div id="loadingProgress" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+    </div>
+  </div>
+</div>
 
   <div id="app" class="flex h-screen overflow-hidden">
 
@@ -190,7 +251,10 @@
     <aside id="sidebar" class="sidebar w-72 bg-white border-r border-gray-200 p-5 shadow-xl">
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-3">
-         <div id="profilePhoto" class="w-12 h-12 rounded-full"></div>
+        <div id="profilePhoto" 
+     class="w-12 h-12 rounded-full bg-cover bg-center border border-slate-300 shadow">
+</div>
+
           <div>
             <div id="ui-username" class="font-semibold text-lg">Guest User</div>
             <div id="ui-email" class="text-xs text-slate-500">guest@example.com</div>
@@ -1262,4 +1326,3 @@
 
 </body>
 </html>
-
