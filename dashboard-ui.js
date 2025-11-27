@@ -95,6 +95,66 @@ function escapeHtml(s = '') {
     .replace(/"/g, '&quot;');
 }
 
+/* ============================================================================
+   LOADING SCREEN
+   ============================================================================ */
+const LoadingScreen = {
+  element: null,
+  progressBar: null,
+  textEl: null,
+  progress: 0,
+
+  init() {
+    this.element = $('#loadingScreen');
+    this.progressBar = $('#loadingProgress');
+    this.textEl = $('#loadingText');
+    console.log('LoadingScreen initialized:', !!this.element);
+  },
+
+  setProgress(percent, text) {
+    this.progress = percent;
+    if (this.progressBar) {
+      this.progressBar.style.width = `${percent}%`;
+    }
+    if (this.textEl && text) {
+      this.textEl.textContent = text;
+    }
+    console.log(`Loading progress: ${percent}% - ${text}`);
+  },
+
+  hide() {
+    console.log('LoadingScreen.hide() called');
+    if (!this.element) {
+      console.warn('LoadingScreen element not found!');
+      return;
+    }
+    
+    // Force progress to 100%
+    this.setProgress(100, 'Ready!');
+    
+    // Immediately start fade out
+    this.element.style.transition = 'opacity 0.5s ease-out';
+    this.element.style.opacity = '0';
+    
+    // Remove from DOM after animation
+    setTimeout(() => {
+      if (this.element) {
+        this.element.style.display = 'none';
+        // Also remove it completely as backup
+        this.element.remove();
+        console.log('✅ LoadingScreen hidden and removed');
+      }
+    }, 500);
+  },
+
+  show() {
+    if (!this.element) return;
+    this.element.style.display = 'flex';
+    this.element.style.opacity = '1';
+    this.setProgress(0, 'Loading your dashboard...');
+  }
+};
+
 function formatNumber(num) {
   if (typeof num !== 'number') num = Number(num) || 0;
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -332,24 +392,29 @@ const sessionsColRef = (uid) => collection(db, 'users', uid, 'sessions');
    ============================================================================ */
 
 async function initializeUserDocument(uid, user) {
-  const ref = userDocRef(uid);
-  const snap = await getDoc(ref);
-  
-  if (!snap.exists()) {
-    console.log('Creating new user document...');
-    const newUserData = {
-      ...defaultUserData,
-      name: user.displayName || 'User',
-      email: user.email || '',
-      photoURL: user.photoURL || '',
-      createdAt: new Date().toISOString(),
-      lastActiveDate: getTodayDate()
-    };
-    await setDoc(ref, newUserData);
-    return newUserData;
+  try {
+    const ref = userDocRef(uid);
+    const snap = await getDoc(ref);
+    
+    if (!snap.exists()) {
+      console.log('Creating new user document...');
+      const newUserData = {
+        ...defaultUserData,
+        name: user.displayName || 'User',
+        email: user.email || '',
+        photoURL: user.photoURL || '',
+        createdAt: new Date().toISOString(),
+        lastActiveDate: getTodayDate()
+      };
+      await setDoc(ref, newUserData);
+      return newUserData;
+    }
+    
+    return snap.data();
+  } catch (e) {
+    console.error('initializeUserDocument error:', e);
+    throw e;
   }
-  
-  return snap.data();
 }
 
 async function initializeDailyStats(uid) {
@@ -564,25 +629,44 @@ function updateAllUI() {
 }
 
 function updateProfileUI() {
-  // Sidebar profile
+  // Update name, email, coins, subscription
   setText('ui-username', state.user.name || 'User');
   setText('ui-email', state.user.email || '');
   setText('ui-coins', formatNumber(state.user.coins || 0));
   setText('subStatus', state.user.subscription || 'Free');
-  
-  // Profile photo
+
+  // === PHOTO FIX - THIS IS THE MAGIC ===
   const photoEl = $('#profilePhoto');
-  if (photoEl && state.user.photoURL) {
-    photoEl.style.backgroundImage = `url(${state.user.photoURL})`;
-    photoEl.style.backgroundSize = 'cover';
-    photoEl.style.backgroundPosition = 'center';
+  if (!photoEl) return;
+
+  // Priority order: Google Auth photo > Firestore photo > Handsome default
+  let photoUrl = firebaseAuth.currentUser?.photoURL?.trim();
+  
+  if (!photoUrl || photoUrl === 'null' || photoUrl === '') {
+    photoUrl = state.user.photoURL?.trim();
   }
   
-  // Settings page inputs
-  const editNameEl = $('#editName');
-  const editEmailEl = $('#editEmail');
-  if (editNameEl && !editNameEl.matches(':focus')) editNameEl.value = state.user.name || '';
-  if (editEmailEl && !editEmailEl.matches(':focus')) editEmailEl.value = state.user.email || '';
+  if (!photoUrl || photoUrl === '' || photoUrl === 'null') {
+    photoUrl = 'https://i.imgur.com/7v1F8kZ.jpeg'; // cool default boy with headphones
+  }
+
+  // Apply the photo
+  photoEl.style.backgroundImage = `url(${photoUrl})`;
+  photoEl.style.backgroundColor = 'transparent';
+  photoEl.style.backgroundSize = 'cover';
+  photoEl.style.backgroundPosition = 'center';
+  photoEl.removeAttribute('data-initials');
+
+  // Optional: fallback initials if image fails to load
+  const img = new Image();
+  img.onload = () => { /* all good */ };
+  img.onerror = () => {
+    const initials = (state.user.name || 'T').split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+    photoEl.style.backgroundImage = '';
+    photoEl.style.backgroundColor = '#e5e7eb';
+    photoEl.setAttribute('data-initials', initials);
+  };
+  img.src = photoUrl;
 }
 
 function updateHeaderUI() {
@@ -1639,26 +1723,42 @@ async function populateLeaderboard() {
         : '';
       
       return `
-        <tr class="${rowClass} transition">
-          <td class="py-3 px-3 font-medium">${medal} ${rank++}</td>
-          <td class="py-3 px-3">
-            <span class="font-semibold ${isCurrentUser ? 'text-purple-600' : ''}">${escapeHtml(d.name || 'Anonymous')}</span>
-            ${subBadge}
-            ${isCurrentUser ? '<span class="ml-2 text-xs text-purple-500">(You)</span>' : ''}
-          </td>
-          <td class="py-3 px-3">
-            <span class="px-2 py-1 rounded-full text-xs font-medium ${
-              d.subscription === 'Premium' ? 'bg-yellow-100 text-yellow-700' :
-              d.subscription === 'Standard' ? 'bg-purple-100 text-purple-700' :
-              'bg-slate-100 text-slate-600'
-            }">${escapeHtml(d.subscription || 'Free')}</span>
-          </td>
-          <td class="py-3 px-3 font-medium">${hours}h</td>
-          <td class="py-3 px-3">
-            <span class="text-yellow-600">🪙</span> ${formatNumber(d.coins || 0)}
-          </td>
-        </tr>
-      `;
+  <tr class="${rowClass} transition hover:bg-purple-50/50">
+    <td class="py-3 px-3 font-medium">${medal} ${rank++}</td>
+    
+    <td class="py-3 px-3">
+      <div class="flex items-center gap-2">
+        <span class="font-semibold ${isCurrentUser ? 'text-purple-600' : 'text-slate-800'}">
+          ${escapeHtml(d.name || 'Anonymous')}
+        </span>
+        
+        ${subBadge}
+        
+        ${isCurrentUser ? `
+          <span class="px-2.5 py-0.5 text-xs font-bold text-purple-700 bg-purple-100 rounded-full animate-pulse">
+            You
+          </span>
+        ` : ''}
+      </div>
+    </td>
+    
+    <td class="py-3 px-3">
+      <span class="px-2 py-1 rounded-full text-xs font-medium ${
+        d.subscription === 'Premium' ? 'bg-yellow-100 text-yellow-700' :
+        d.subscription === 'Standard' ? 'bg-purple-100 text-purple-700' :
+        'bg-slate-100 text-slate-600'
+      }">
+        ${escapeHtml(d.subscription || 'Free')}
+      </span>
+    </td>
+    
+    <td class="py-3 px-3 font-medium">${hours}h</td>
+    
+    <td class="py-3 px-3">
+      <span class="text-yellow-600">🪙</span> ${formatNumber(d.coins || 0)}
+    </td>
+  </tr>
+`;
     }).join('');
 
     table.innerHTML = rows;
@@ -1865,8 +1965,7 @@ async function subscribeToPlan(plan) {
   try {
     await updateDoc(userDocRef(user.uid), {
       subscription: planName,
-      subscriptionUpdatedAt: new Date().
-      toISOString()
+      subscriptionUpdatedAt: new Date().toISOString()
     });
     
     toast(`🎉 Subscribed to ${planName}!`);
@@ -2762,35 +2861,117 @@ function initGlobalEventListeners() {
    ============================================================================ */
 
 function setupAuthListener() {
+  console.log('Setting up auth listener...');
+  
   onAuthStateChanged(auth, async (user) => {
+    console.log('Auth state changed:', user ? user.email : 'no user');
+    
     if (!user) {
-      console.log('No user logged in');
-      // Optionally redirect to login
-      // window.location.href = 'login.html';
+      console.log('No user logged in - redirecting');
+      LoadingScreen.setProgress(100, 'Redirecting to login...');
+      setTimeout(() => {
+        window.location.href = 'login.html';
+      }, 500);
       return;
     }
 
     console.log('User authenticated:', user.email);
+    LoadingScreen.setProgress(20, 'User authenticated...');
 
     try {
-      // Initialize user documents if needed
-      await initializeUserDocument(user.uid, user);
-      await initializeDailyStats(user.uid);
-      await initializeWeeklyStats(user.uid);
+      // Initialize user documents
+      console.log('Initializing user document...');
+      LoadingScreen.setProgress(30, 'Loading profile...');
+      const userData = await initializeUserDocument(user.uid, user);
+      console.log('User document loaded:', userData);
+      
+      LoadingScreen.setProgress(40, 'Loading daily stats...');
+      const dailyData = await initializeDailyStats(user.uid);
+      console.log('Daily stats loaded:', dailyData);
+      
+      LoadingScreen.setProgress(50, 'Loading weekly stats...');
+      const weeklyData = await initializeWeeklyStats(user.uid);
+      console.log('Weekly stats loaded:', weeklyData);
 
-      // Setup realtime listeners
+      LoadingScreen.setProgress(60, 'Loading tasks...');
+      try {
+        const tasksSnap = await getDocs(query(tasksColRef(user.uid), orderBy('createdAt', 'desc')));
+        state.tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('Tasks loaded:', state.tasks.length);
+      } catch (e) {
+        console.warn('Tasks load failed:', e);
+        state.tasks = [];
+      }
+
+      LoadingScreen.setProgress(70, 'Loading projects...');
+      try {
+        const projectsSnap = await getDocs(query(projectsColRef(user.uid), orderBy('createdAt', 'desc')));
+        state.projects = projectsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('Projects loaded:', state.projects.length);
+      } catch (e) {
+        console.warn('Projects load failed:', e);
+        state.projects = [];
+      }
+
+      LoadingScreen.setProgress(80, 'Loading sessions...');
+      try {
+        const sessionsSnap = await getDocs(query(sessionsColRef(user.uid), orderBy('timestamp', 'desc'), limit(20)));
+        state.sessions = sessionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('Sessions loaded:', state.sessions.length);
+      } catch (e) {
+        console.warn('Sessions load failed:', e);
+        state.sessions = [];
+      }
+
+      LoadingScreen.setProgress(90, 'Setting up real-time sync...');
+      console.log('Setting up realtime listeners...');
       setupRealtimeListeners(user.uid);
 
       // Request notification permission
       if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission();
+        Notification.requestPermission().then(result => {
+          console.log('Notification permission:', result);
+        });
       }
 
-      console.log('User data initialized');
+      LoadingScreen.setProgress(95, 'Rendering UI...');
+      console.log('Updating UI...');
+      
+      // Update all UI
+      updateAllUI();
+      renderTasks();
+      populateProjects();
+      renderRecentActivity();
+      renderRecentSessions();
+
+      console.log('✅ User data initialized successfully');
+      
+      // IMPORTANT: Set to 100% BEFORE hiding
+      LoadingScreen.setProgress(100, 'Ready!');
+      
+      // Small delay then hide
+      setTimeout(() => {
+        LoadingScreen.hide();
+        toast('Welcome back! 👋');
+      }, 300);
+
     } catch (e) {
-      console.error('Auth initialization error:', e);
-      toast('Failed to load user data');
+      console.error('❌ Auth initialization error:', e);
+      console.error('Error stack:', e.stack);
+      
+      LoadingScreen.setProgress(100, 'Error loading data...');
+      setTimeout(() => {
+        LoadingScreen.hide();
+        toast('Failed to load some data. Please refresh the page.');
+      }, 1000);
     }
+  }, (error) => {
+    console.error('❌ Auth listener error:', error);
+    LoadingScreen.hide();
+    toast('Authentication error. Please try logging in again.');
+    setTimeout(() => {
+      window.location.href = 'login.html';
+    }, 2000);
   });
 }
 
@@ -2799,7 +2980,11 @@ function setupAuthListener() {
    ============================================================================ */
 
 function initializeDashboard() {
-  console.log('Initializing Timora Dashboard v6.0...');
+  console.log('Initializing Timora Dashboard...');
+
+  // Initialize loading screen FIRST
+  LoadingScreen.init();
+  LoadingScreen.setProgress(10, 'Initializing...');
 
   // Initialize DOM references
   initDOMReferences();
@@ -2815,21 +3000,18 @@ function initializeDashboard() {
   initSubscriptions();
   initGlobalEventListeners();
 
-  // Setup auth listener (this triggers data loading)
+  // Setup auth listener (this triggers data loading and hides loader when done)
   setupAuthListener();
 
-  // Initial UI setup
-  updateAllUI();
+  setTimeout(() => {
+    if (LoadingScreen.element && LoadingScreen.element.style.display !== 'none') {
+      console.warn('Loading timeout - forcing hide');
+      LoadingScreen.hide();
+      toast('Loading took too long. Some data may not be synced.');
+    }
+  }, 10000);
 
-  console.log('Dashboard initialization complete');
-  toast('Dashboard ready');
-}
-
-// Start when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeDashboard);
-} else {
-  initializeDashboard();
+  console.log('Dashboard initialization started');
 }
 
 /* ============================================================================
@@ -2873,5 +3055,7 @@ window.Timora = {
 };
 
 console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timora');
+
+initializeDashboard();
 
 }); // End DOMContentLoaded
