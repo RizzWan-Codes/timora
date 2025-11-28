@@ -213,6 +213,48 @@
   animation: shimmer 2s linear infinite;
 }
 
+/* Better Sidebar Scrolling */
+#sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* Full screen height */
+  padding: 0; /* Remove padding from main aside */
+}
+
+#sidebar > div:first-of-type {
+  /* Profile section */
+  padding: 1.25rem; /* Re-apply padding here */
+  flex-shrink: 0; /* Don't shrink */
+}
+
+#sidebar > nav {
+  /* Navigation section */
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  overflow-y: auto; /* THIS IS THE SCROLL */
+  flex-grow: 1; /* Take up all available space */
+}
+
+#sidebar > div:last-of-type {
+  /* Coins & Logout section */
+  padding: 1.25rem; /* Re-apply padding here */
+  flex-shrink: 0; /* Don't shrink */
+  padding-top: 1.5rem;
+  border-top-width: 1px;
+}
+
+/* Optional: Prettier scrollbar */
+#sidebar > nav::-webkit-scrollbar {
+  width: 6px;
+}
+#sidebar > nav::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 3px;
+}
+#sidebar > nav::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50 text-slate-900">
@@ -313,6 +355,27 @@
     <path d="M12 3v18m9-9H3" stroke="currentColor" stroke-width="2"/>
   </svg>
   <span class="font-medium">Subscription</span>
+</button>
+
+<!-- AI Teacher -->
+<button class="nav-btn w-full text-left px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 transition-all duration-300 flex items-center gap-3" data-section="ai-teacher">
+  <svg class="w-5 h-5 text-cyan-500" viewBox="0 0 24 24" fill="none">
+    <path d="M12 14l9-5-9-5-9 5 9 5z" stroke="currentColor" stroke-width="2"/>
+    <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" stroke="currentColor" stroke-width="2"/>
+    <circle cx="12" cy="10" r="2" fill="currentColor"/>
+  </svg>
+  <span class="font-medium">AI Teacher</span>
+  <span class="ml-auto text-xs bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-2 py-0.5 rounded-full">Beta</span>
+</button>
+
+<!-- Referrals -->
+<button class="nav-btn w-full text-left px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 transition-all duration-300 flex items-center gap-3" data-section="referrals">
+  <svg class="w-5 h-5 text-emerald-500" viewBox="0 0 24 24" fill="none">
+    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+  <span class="font-medium">Referrals</span>
 </button>
 
 
@@ -1084,6 +1147,328 @@
         <button class="subscribeBtn w-full bg-gradient-to-r from-yellow-500 to-amber-500 text-white py-3 rounded-xl hover:scale-105 transition-all" data-plan="premium">Go Premium</button>
       </div>
     </div>
+  </div>
+</article>
+
+
+<!-- AI TEACHER -->
+<article id="sect-ai-teacher" class="hidden section-card slide-in-up">
+  <div class="max-w-5xl mx-auto">
+    <div class="glass-card rounded-3xl p-8">
+      
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h2 class="text-3xl font-bold text-slate-800 mb-2">AI Teacher</h2>
+          <p class="text-slate-500">Your personal AI tutor — ask anything, learn faster</p>
+        </div>
+        <div class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-100 to-blue-100 border border-cyan-200">
+          <span class="text-sm font-semibold text-cyan-700">🤖 Powered by AI</span>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-8">
+        
+        <!-- Chat Section -->
+        <div class="lg:col-span-2 space-y-6">
+          
+          <!-- Chat Messages Container -->
+          <div id="aiChatMessages" class="h-[400px] overflow-y-auto rounded-2xl bg-gradient-to-br from-slate-50 to-purple-50 p-6 space-y-4 border border-slate-200">
+            
+            <!-- Welcome Message -->
+            <div class="flex gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white text-lg flex-shrink-0">
+                🤖
+              </div>
+              <div class="flex-1 bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
+                <p class="text-slate-700">Hello! I'm your AI Teacher. I can help you with:</p>
+                <ul class="mt-2 text-sm text-slate-600 space-y-1">
+                  <li>• Explaining complex concepts</li>
+                  <li>• Solving math problems step-by-step</li>
+                  <li>• Creating study summaries</li>
+                  <li>• Quiz practice & test prep</li>
+                </ul>
+                <p class="mt-3 text-slate-700">What would you like to learn today? 📚</p>
+              </div>
+            </div>
+            
+          </div>
+
+          <!-- Input Area -->
+          <div class="flex gap-3">
+            <input 
+              id="aiTeacherInput" 
+              type="text" 
+              placeholder="Ask any question... (e.g., Explain photosynthesis)"
+              class="flex-1 px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 transition-all text-slate-700"
+            />
+            <button 
+              id="aiTeacherSend"
+              class="px-6 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
+            >
+              <span>Send</span>
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="flex flex-wrap gap-2">
+            <button class="ai-quick-btn px-4 py-2 rounded-xl bg-white border-2 border-slate-200 text-sm font-medium hover:border-cyan-400 hover:bg-cyan-50 transition-all">
+              📝 Explain a concept
+            </button>
+            <button class="ai-quick-btn px-4 py-2 rounded-xl bg-white border-2 border-slate-200 text-sm font-medium hover:border-cyan-400 hover:bg-cyan-50 transition-all">
+              🧮 Solve a problem
+            </button>
+            <button class="ai-quick-btn px-4 py-2 rounded-xl bg-white border-2 border-slate-200 text-sm font-medium hover:border-cyan-400 hover:bg-cyan-50 transition-all">
+              📋 Create quiz
+            </button>
+            <button class="ai-quick-btn px-4 py-2 rounded-xl bg-white border-2 border-slate-200 text-sm font-medium hover:border-cyan-400 hover:bg-cyan-50 transition-all">
+              📖 Summarize topic
+            </button>
+          </div>
+        </div>
+
+        <!-- Sidebar Features -->
+        <div class="space-y-6">
+          
+          <!-- Subject Selection -->
+          <div class="glass-card rounded-2xl p-5 border border-slate-200">
+            <h4 class="font-bold text-slate-800 mb-4">Select Subject</h4>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="subject-btn px-3 py-2 rounded-lg bg-purple-100 text-purple-700 text-sm font-medium hover:bg-purple-200 transition-all">Math</button>
+              <button class="subject-btn px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-all">Physics</button>
+              <button class="subject-btn px-3 py-2 rounded-lg bg-green-100 text-green-700 text-sm font-medium hover:bg-green-200 transition-all">Chemistry</button>
+              <button class="subject-btn px-3 py-2 rounded-lg bg-orange-100 text-orange-700 text-sm font-medium hover:bg-orange-200 transition-all">Biology</button>
+              <button class="subject-btn px-3 py-2 rounded-lg bg-pink-100 text-pink-700 text-sm font-medium hover:bg-pink-200 transition-all">English</button>
+              <button class="subject-btn px-3 py-2 rounded-lg bg-cyan-100 text-cyan-700 text-sm font-medium hover:bg-cyan-200 transition-all">History</button>
+            </div>
+          </div>
+
+          <!-- Usage Stats -->
+          <div class="glass-card rounded-2xl p-5 border border-slate-200">
+            <h4 class="font-bold text-slate-800 mb-4">Today's Usage</h4>
+            <div class="space-y-3">
+              <div>
+                <div class="flex justify-between text-sm mb-1">
+                  <span class="text-slate-600">Questions Asked</span>
+                  <span class="font-semibold text-slate-800">12/20</span>
+                </div>
+                <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full" style="width: 60%"></div>
+                </div>
+              </div>
+              <p class="text-xs text-slate-500">Free tier: 20 questions/day</p>
+              <button class="w-full py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold hover:scale-105 transition-all">
+                Upgrade for Unlimited
+              </button>
+            </div>
+          </div>
+
+          <!-- Recent Topics -->
+          <div class="glass-card rounded-2xl p-5 border border-slate-200">
+            <h4 class="font-bold text-slate-800 mb-4">Recent Topics</h4>
+            <div class="space-y-2">
+              <div class="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+                <div class="text-sm font-medium text-slate-700">Quadratic Equations</div>
+                <div class="text-xs text-slate-500">Math • 2 hours ago</div>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+                <div class="text-sm font-medium text-slate-700">Newton's Laws</div>
+                <div class="text-xs text-slate-500">Physics • Yesterday</div>
+              </div>
+              <div class="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+                <div class="text-sm font-medium text-slate-700">Cell Division</div>
+                <div class="text-xs text-slate-500">Biology • 2 days ago</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</article>
+
+<!-- REFERRALS -->
+<article id="sect-referrals" class="hidden section-card slide-in-up">
+  <div class="max-w-5xl mx-auto">
+    
+    <!-- Hero Section -->
+    <div class="glass-card rounded-3xl p-8 mb-8 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 border border-emerald-200">
+      <div class="grid lg:grid-cols-2 gap-8 items-center">
+        <div>
+          <h2 class="text-3xl font-bold text-slate-800 mb-3">Invite Friends, Earn Rewards! 🎁</h2>
+          <p class="text-slate-600 mb-6">Share Timora with friends and earn coins for every successful referral. They get rewards too!</p>
+          
+          <div class="flex items-center gap-4 mb-6">
+            <div class="text-center">
+              <div class="text-3xl font-bold text-emerald-600">100</div>
+              <div class="text-xs text-slate-500">Coins per referral</div>
+            </div>
+            <div class="text-2xl">+</div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-blue-600">50</div>
+              <div class="text-xs text-slate-500">Bonus for friend</div>
+            </div>
+          </div>
+
+          <!-- Referral Link -->
+          <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+            <label class="text-sm text-slate-600 mb-2 block">Your Referral Link</label>
+            <div class="flex gap-2">
+              <input 
+                id="referralLink" 
+                type="text" 
+                readonly 
+                value="https://timora.app/ref/USER123"
+                class="flex-1 px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-600 select-all"
+              />
+              <button 
+                id="copyReferralBtn"
+                class="px-4 py-2 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-all"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Illustration -->
+        <div class="text-center">
+          <div class="inline-block p-8 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100">
+            <div class="text-8xl">🤝</div>
+          </div>
+          <div class="mt-4 flex justify-center gap-3">
+            <button id="shareRefWhatsapp" class="p-3 rounded-xl bg-green-500 text-white hover:scale-110 transition-all">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+            </button>
+            <button id="shareRefTwitter" class="p-3 rounded-xl bg-sky-500 text-white hover:scale-110 transition-all">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+              </svg>
+            </button>
+            <button id="shareRefEmail" class="p-3 rounded-xl bg-blue-500 text-white hover:scale-110 transition-all">
+              <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+      <div class="glass-card rounded-2xl p-6 text-center hover-lift">
+        <div class="text-4xl font-bold text-emerald-600 mb-2" id="totalReferrals">7</div>
+        <div class="text-slate-600">Total Referrals</div>
+      </div>
+      <div class="glass-card rounded-2xl p-6 text-center hover-lift">
+        <div class="text-4xl font-bold text-blue-600 mb-2" id="pendingReferrals">2</div>
+        <div class="text-slate-600">Pending</div>
+      </div>
+      <div class="glass-card rounded-2xl p-6 text-center hover-lift">
+        <div class="text-4xl font-bold text-yellow-600 mb-2" id="earnedFromReferrals">700</div>
+        <div class="text-slate-600">Coins Earned</div>
+      </div>
+    </div>
+
+    <!-- Referral History -->
+    <div class="glass-card rounded-2xl p-6">
+      <h3 class="font-bold text-lg text-slate-800 mb-6">Referral History</h3>
+      
+      <div class="space-y-4" id="referralHistory">
+        <!-- Completed Referral -->
+        <div class="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-bold">A</div>
+            <div>
+              <div class="font-medium text-slate-800">Arjun S.</div>
+              <div class="text-xs text-slate-500">Joined 3 days ago</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 font-semibold">+100 coins</span>
+            <span class="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Completed</span>
+          </div>
+        </div>
+
+        <!-- Completed Referral -->
+        <div class="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center text-purple-700 font-bold">P</div>
+            <div>
+              <div class="font-medium text-slate-800">Priya M.</div>
+              <div class="text-xs text-slate-500">Joined 1 week ago</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 font-semibold">+100 coins</span>
+            <span class="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Completed</span>
+          </div>
+        </div>
+
+        <!-- Pending Referral -->
+        <div class="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center text-amber-700 font-bold">R</div>
+            <div>
+              <div class="font-medium text-slate-800">Rahul K.</div>
+              <div class="text-xs text-slate-500">Invited 2 days ago</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-amber-600 font-semibold">Pending...</span>
+            <span class="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Awaiting signup</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="noReferrals" class="hidden text-center py-12">
+        <div class="text-6xl mb-4">👥</div>
+        <h4 class="text-lg font-semibold text-slate-700 mb-2">No referrals yet</h4>
+        <p class="text-slate-500 text-sm">Share your link and start earning rewards!</p>
+      </div>
+    </div>
+
+    <!-- Rewards Tiers -->
+    <div class="glass-card rounded-2xl p-6 mt-8">
+      <h3 class="font-bold text-lg text-slate-800 mb-6">🏆 Referral Milestones</h3>
+      
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="p-4 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-emerald-400 relative">
+          <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs">✓</div>
+          <div class="text-2xl mb-2">🥉</div>
+          <div class="font-bold text-slate-800">5 Referrals</div>
+          <div class="text-sm text-slate-500">+200 bonus coins</div>
+        </div>
+        
+        <div class="p-4 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-emerald-400 relative">
+          <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs">✓</div>
+          <div class="text-2xl mb-2">🥈</div>
+          <div class="font-bold text-slate-800">10 Referrals</div>
+          <div class="text-sm text-slate-500">Free month Standard</div>
+        </div>
+        
+        <div class="p-4 rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-slate-200">
+          <div class="text-2xl mb-2">🥇</div>
+          <div class="font-bold text-slate-800">25 Referrals</div>
+          <div class="text-sm text-slate-500">Exclusive merch</div>
+        </div>
+        
+        <div class="p-4 rounded-xl bg-gradient-to-br from-purple-100 to-pink-100 border-2 border-purple-200">
+          <div class="text-2xl mb-2">💎</div>
+          <div class="font-bold text-slate-800">50 Referrals</div>
+          <div class="text-sm text-slate-500">Lifetime Premium!</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </article>
 
