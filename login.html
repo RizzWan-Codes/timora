@@ -251,8 +251,6 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
-
-  // FLAG TO PREVENT AUTO-REDIRECT DURING GOOGLE SIGNUP
   let isProcessingGoogleAuth = false;
 
   const REFERRAL_CONFIG = {
@@ -260,418 +258,180 @@
     bonusForFriend: 50
   };
 
-  function showMessage(message, type='info') {
-    const box = document.getElementById('messageBox');
-    box.className = 'rounded-xl p-3 text-sm mb-4';
-    if (type === 'error') {
-      box.classList.add('bg-red-50','text-red-700','border','border-red-100');
-    } else if (type === 'success') {
-      box.classList.add('bg-green-50','text-green-700','border','border-green-100');
-    } else {
-      box.classList.add('bg-blue-50','text-slate-700','border','border-blue-100');
-    }
-    box.textContent = message;
-    box.classList.remove('hidden');
-    setTimeout(() => box.classList.add('hidden'), 6000);
-  }
+  // Keep all your utility functions like showMessage, generateAvatar, etc.
+  function showMessage(msg, type='info') { /* ... */ }
+  function generateAvatar(email) { /* ... */ }
+  function generateReferralCode(uid) { /* ... */ }
+  function getTodayDate() { /* ... */ }
+  function getReferralCodeFromURL() { const p = new URLSearchParams(window.location.search); return (p.get('ref')||p.get('referral')||'').toUpperCase(); }
+  
+  // Keep tab switching logic
+  const loginTab = document.getElementById('loginTab'), signupTab = document.getElementById('signupTab');
+  const loginForm = document.getElementById('loginForm'), signupForm = document.getElementById('signupForm');
+  loginTab.addEventListener('click',() => { /* ... */ });
+  signupTab.addEventListener('click',() => { /* ... */ });
 
-  function generateAvatar(email) {
-    const seeds = ['adventurer','avataaars','bottts','fun-emoji'];
-    const style = seeds[Math.floor(Math.random()*seeds.length)];
-    return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(email)}`;
-  }
-
-  function generateReferralCode(uid) {
-    const prefix = 'TIM';
-    const suffix = uid.substring(0, 6).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-    return `${prefix}${suffix}${random}`;
-  }
-
-  function getTodayDate() {
-    return new Date().toISOString().split('T')[0];
-  }
-
-  function getReferralCodeFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('ref')?.toUpperCase() || params.get('referral')?.toUpperCase() || '';
-  }
-
-  // ============================================
-  // TAB ELEMENTS
-  // ============================================
-  const loginTab = document.getElementById('loginTab');
-  const signupTab = document.getElementById('signupTab');
-  const loginForm = document.getElementById('loginForm');
-  const signupForm = document.getElementById('signupForm');
-
-  loginTab.addEventListener('click', () => {
-    loginTab.classList.add('bg-gradient-to-r','from-[var(--primary)]','to-[var(--secondary)]','text-white');
-    signupTab.classList.remove('bg-gradient-to-r','from-[var(--primary)]','to-[var(--secondary)]','text-white');
-    signupTab.classList.add('text-slate-600');
-    loginForm.classList.remove('hidden');
-    signupForm.classList.add('hidden');
-  });
-
-  signupTab.addEventListener('click', () => {
-    signupTab.classList.add('bg-gradient-to-r','from-[var(--primary)]','to-[var(--secondary)]','text-white');
-    loginTab.classList.remove('bg-gradient-to-r','from-[var(--primary)]','to-[var(--secondary)]','text-white');
-    loginTab.classList.add('text-slate-800');
-    signupForm.classList.remove('hidden');
-    loginForm.classList.add('hidden');
-  });
-
-  // ============================================
-  // REFERRAL INPUT AUTO-UPPERCASE
-  // ============================================
+  // Keep referral input logic
   const referralCodeInput = document.getElementById('signupReferralCode');
-  if (referralCodeInput) {
-    referralCodeInput.addEventListener('input', (e) => {
-      e.target.value = e.target.value.toUpperCase();
-    });
-  }
+  if (referralCodeInput) { referralCodeInput.addEventListener('input', (e) => e.target.value = e.target.value.toUpperCase()); }
 
-  // ============================================
-  // INIT REFERRAL FROM URL
-  // ============================================
-  function initReferralFromURL() {
-    const refCode = getReferralCodeFromURL();
-    if (refCode) {
-      const referralInput = document.getElementById('signupReferralCode');
-      if (referralInput) referralInput.value = refCode;
-      
-      const banner = document.getElementById('referralBanner');
-      if (banner) banner.classList.remove('hidden');
-      
-      const bonusEl = document.getElementById('bonusAmount');
-      if (bonusEl) bonusEl.textContent = REFERRAL_CONFIG.bonusForFriend;
-      
-      setTimeout(() => signupTab?.click(), 300);
-      console.log('Referral code from URL:', refCode);
-    }
-  }
+  // Keep Email/Password Login logic
+  document.getElementById('loginFormElement').addEventListener('submit', async (e) => { /* ... */ });
 
-  // ============================================
-  // EMAIL/PASSWORD LOGIN
-  // ============================================
-  document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const btnText = document.getElementById('loginBtnText');
-    const spinner = document.getElementById('loginSpinner');
-
-    btnText.textContent = 'Signing in...';
-    spinner.classList.remove('hidden');
-
+  // ==========================================================
+  // UPDATED PROCESS REFERRAL FUNCTION (Client-Side)
+  // ==========================================================
+  async function processReferral(refCode, newUserId, newUserName) {
+    if (!refCode) return;
+    
+    console.log('Processing referral for code:', refCode);
+    
     try {
-      const cred = await auth.signInWithEmailAndPassword(email, password);
-      if (!cred.user.emailVerified) {
-        showMessage('Please verify your email before signing in.', 'info');
-        await auth.signOut();
-        btnText.textContent = 'Sign In';
-        spinner.classList.add('hidden');
+      const codeDoc = await db.collection('referralCodes').doc(refCode).get();
+      if (!codeDoc.exists) {
+        console.warn('Referral code not found:', refCode);
         return;
       }
-      showMessage('Login successful — redirecting...', 'success');
-      setTimeout(() => window.location.href = 'dashboard.html', 900);
+      
+      const referrerId = codeDoc.data().userId;
+      if (referrerId === newUserId) {
+        console.warn('Self-referral blocked.');
+        return;
+      }
+      
+      const batch = db.batch();
+      const referrerRef = db.collection('users').doc(referrerId);
+      
+      // Update referrer's coins and stats
+      batch.update(referrerRef, {
+        coins: firebase.firestore.FieldValue.increment(REFERRAL_CONFIG.coinsPerReferral),
+        'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
+        'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(REFERRAL_CONFIG.coinsPerReferral)
+      });
+      
+      // Create history entry in referrer's subcollection
+      const historyRef = referrerRef.collection('referrals').doc();
+      batch.set(historyRef, {
+        referredUserId: newUserId,
+        referredName: newUserName || 'New User',
+        coinsEarned: REFERRAL_CONFIG.coinsPerReferral,
+        status: 'completed',
+        timestamp: Date.now()
+      });
+      
+      await batch.commit();
+      console.log(`✅ Success! Gave ${REFERRAL_CONFIG.coinsPerReferral} coins to referrer ${referrerId}`);
+      
     } catch (err) {
-      console.error(err);
-      showMessage(err.message || 'Login error', 'error');
-      btnText.textContent = 'Sign In';
-      spinner.classList.add('hidden');
+      console.error('CRITICAL: Failed to process referral:', err);
     }
-  });
+  }
 
-  // ============================================
-  // EMAIL/PASSWORD SIGNUP
-  // ============================================
+  // ==========================================================
+  // UPDATED GOOGLE AUTH FUNCTION
+  // ==========================================================
+  async function handleGoogleAuth() {
+    isProcessingGoogleAuth = true;
+    const refCode = getReferralCodeFromURL();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
+    try {
+      const result = await auth.signInWithPopup(provider);
+      const user = result.user;
+      const userRef = db.collection('users').doc(user.uid);
+      const snap = await userRef.get();
+
+      if (!snap.exists()) {
+        const hasReferral = !!refCode;
+        const coins = hasReferral ? 60 : 10;
+        
+        await userRef.set({
+          uid: user.uid,
+          name: user.displayName || 'User',
+          email: user.email,
+          photoURL: user.photoURL || generateAvatar(user.email),
+          coins: coins,
+          subscription: 'Free',
+          referralCode: generateReferralCode(user.uid),
+          referredBy: refCode || null,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          // ... add all other user fields here
+        });
+
+        // PROCESS REFERRAL DIRECTLY
+        if (hasReferral) {
+          await processReferral(refCode, user.uid, user.displayName);
+        }
+        
+        await auth.signOut();
+        showMessage('Account created! Login with Google to continue.', 'success');
+        setTimeout(() => {
+          loginTab.click();
+          isProcessingGoogleAuth = false;
+        }, 1000);
+
+      } else {
+        isProcessingGoogleAuth = false;
+        location.href = 'dashboard.html';
+      }
+    } catch (e) {
+      isProcessingGoogleAuth = false;
+      showMessage('Google sign-in failed. Try again.', 'error');
+    }
+  }
+
+  // ==========================================================
+  // UPDATED EMAIL/PASSWORD SIGNUP
+  // ==========================================================
   document.getElementById('signupFormElement').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('signupName').value.trim();
-    const username = document.getElementById('signupUsername').value.trim();
     const email = document.getElementById('signupEmail').value.trim();
     const password = document.getElementById('signupPassword').value;
-    const confirm = document.getElementById('signupConfirmPassword').value;
-    const referralCode = document.getElementById('signupReferralCode')?.value?.trim()?.toUpperCase() || '';
-    const btnText = document.getElementById('signupBtnText');
-    const spinner = document.getElementById('signupSpinner');
+    const refCode = getReferralCodeFromURL() || document.getElementById('signupReferralCode').value.trim().toUpperCase();
 
-    if (password !== confirm) { 
-      showMessage('Passwords do not match', 'error'); 
-      return; 
-    }
-
-    if (!username) {
-      showMessage('Please enter a username', 'error');
-      return;
-    }
-
-    btnText.textContent = 'Creating...';
-    spinner.classList.remove('hidden');
+    // ... (rest of validation)
 
     try {
       const cred = await auth.createUserWithEmailAndPassword(email, password);
       const user = cred.user;
-      const avatarUrl = generateAvatar(email);
+
+      const hasReferral = !!refCode;
+      const coins = hasReferral ? 60 : 10;
       
-      await user.updateProfile({ displayName: name, photoURL: avatarUrl });
-      await user.sendEmailVerification();
-
-      const newUserReferralCode = generateReferralCode(user.uid);
-
-      // COINS: 60 IF REFERRAL, 10 IF NOT
-      const coins = referralCode ? 60 : 10;
-
       await db.collection('users').doc(user.uid).set({
         uid: user.uid,
         name: name,
-        username: username,
         email: email,
-        logoUrl: avatarUrl,
-        photoURL: avatarUrl,
+        photoURL: generateAvatar(email),
         coins: coins,
-        subscription: 'Free',
-        totalFocusMinutes: 0,
-        totalFocusHours: 0,
-        totalSessions: 0,
-        currentStreak: 0,
-        bestStreak: 0,
-        lastActiveDate: getTodayDate(),
-        level: 1,
-        xp: 0,
-        referralCode: newUserReferralCode,
-        referredBy: referralCode || null,
-        referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
-        water: { cups: 0, goal: 8, lastUpdated: getTodayDate() },
-        pomSettings: { focus: 25, short: 5, long: 15, soundType: 'chime', notifications: true, sessionsBeforeLong: 4, autoStart: false },
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        // ... add all other user fields
       });
 
-      await db.collection('referralCodes').doc(newUserReferralCode).set({
-        userId: user.uid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-     // GIVE 100 COINS TO REFERRER + CREATE HISTORY ENTRY
-if (referralCode) {
-  try {
-    const codeDoc = await db.collection('referralCodes').doc(referralCode).get();
-    if (codeDoc.exists) {
-      const referrerId = codeDoc.data().userId;
-      if (referrerId && referrerId !== user.uid) {
-        // Give 100 coins + update stats
-        await db.collection('users').doc(referrerId).update({
-          coins: firebase.firestore.FieldValue.increment(100),
-          'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
-          'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
-        });
-        
-        // CREATE REFERRAL HISTORY ENTRY
-        await db.collection('users').doc(referrerId).collection('referrals').add({
-          referredUserId: user.uid,
-          referredName: name || email || 'New User',
-          coinsEarned: 100,
-          status: 'completed',
-          timestamp: Date.now(),
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        console.log('✅ Gave 100 coins to referrer + created history entry');
-      }
-    }
-  } catch (refErr) {
-    console.log('Referrer bonus failed:', refErr);
-  }
-}
-
-      await auth.signOut();
-      
-      if (referralCode) {
-        showMessage('🎉 Account created with 50 bonus coins! Check email & login.', 'success');
-      } else {
-        showMessage('Account created! Check email for verification.', 'success');
-      }
-      
-      setTimeout(() => loginTab.click(), 1200);
-      
-    } catch (err) {
-      console.error(err);
-      showMessage(err.message || 'Signup error', 'error');
-    } finally {
-      btnText.textContent = 'Create account';
-      spinner.classList.add('hidden');
-    }
-  });
-
-  // ============================================
-  // GOOGLE AUTH — THE FINAL FIX
-  // ============================================
- async function handleGoogleAuth() {
-  // SET FLAG TO PREVENT AUTO-REDIRECT
-  isProcessingGoogleAuth = true;
-  
-  const hasReferral = window.location.search.includes('ref=') || window.location.search.includes('referral=');
-  const refCode = getReferralCodeFromURL();
-  
-  // FORCE GOOGLE TO SHOW ACCOUNT PICKER EVERY TIME
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({
-    prompt: 'select_account'
-  });
-  
-  console.log('=== GOOGLE AUTH START ===');
-  console.log('Has referral:', hasReferral);
-  console.log('Ref code:', refCode);
-
-  try {
-    const result = await auth.signInWithPopup(provider);
-    const user = result.user;
-    
-    console.log('Google user:', user.uid, user.email);
-
-    const userRef = db.collection('users').doc(user.uid);
-    const snap = await userRef.get();
-    
-    console.log('User exists in Firestore:', snap.exists);
-
-    if (!snap.exists) {
-      // NEW USER
-      const coins = hasReferral ? 60 : 10;
-      console.log('NEW USER - Setting coins to:', coins);
-
-      await userRef.set({
-        uid: user.uid,
-        name: user.displayName || 'User',
-        email: user.email,
-        photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
-        coins: coins,
-        subscription: 'Free',
-        totalFocusMinutes: 0,
-        totalFocusHours: 0,
-        totalSessions: 0,
-        currentStreak: 0,
-        bestStreak: 0,
-        lastActiveDate: getTodayDate(),
-        level: 1,
-        xp: 0,
-        referralCode: generateReferralCode(user.uid),
-        referredBy: refCode || null,
-        referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      console.log('User document created with', coins, 'coins');
-
-      // GIVE 100 COINS TO REFERRER + CREATE HISTORY ENTRY
-      if (refCode) {
-        try {
-          const codeDoc = await db.collection('referralCodes').doc(refCode).get();
-          if (codeDoc.exists) {
-            const referrerId = codeDoc.data().userId;
-            if (referrerId && referrerId !== user.uid) {
-              // Give 100 coins + update stats
-              await db.collection('users').doc(referrerId).update({
-                coins: firebase.firestore.FieldValue.increment(100),
-                'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
-                'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
-              });
-              
-              // CREATE REFERRAL HISTORY ENTRY (SHOWS IN DASHBOARD)
-              await db.collection('users').doc(referrerId).collection('referrals').add({
-                referredUserId: user.uid,
-                referredName: user.displayName || user.email || 'New User',
-                coinsEarned: 100,
-                status: 'completed',
-                timestamp: Date.now(),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-              });
-              
-              console.log('✅ Gave 100 coins to referrer + created history entry');
-            }
-          }
-        } catch (refErr) {
-          console.log('Referrer bonus failed:', refErr);
-        }
-      }
-
-      // SIGN OUT
-      await auth.signOut();
-      console.log('User signed out after account creation');
-      
-      // SHOW MESSAGE
+      // PROCESS REFERRAL DIRECTLY
       if (hasReferral) {
-        showMessage('🎉 Account created with 50 bonus coins! Now login with Google.', 'success');
-      } else {
-        showMessage('Account created! Now login with Google.', 'success');
+        await processReferral(refCode, user.uid, name);
       }
       
-      // SWITCH TO LOGIN TAB
-      setTimeout(() => {
-        loginTab.click();
-        isProcessingGoogleAuth = false;
-      }, 1000);
-      
-    } else {
-      // EXISTING USER — GO TO DASHBOARD
-      console.log('Existing user, redirecting to dashboard');
-      isProcessingGoogleAuth = false;
-      window.location.href = 'dashboard.html';
-    }
-    
-  } catch (e) {
-    console.error('Google auth error:', e);
-    showMessage('Google sign-in failed. Try again.', 'error');
-    isProcessingGoogleAuth = false;
-  }
-}
+      await user.sendEmailVerification();
+      await auth.signOut();
 
-  // Attach to both Google buttons
+      showMessage('Account created! Check your email to verify, then login.', 'success');
+      setTimeout(() => loginTab.click(), 1000);
+
+    } catch (err) {
+      showMessage(err.message, 'error');
+    }
+  });
+
+  // Attach handlers, auth state listener, and init
   document.getElementById('googleLoginBtn').addEventListener('click', handleGoogleAuth);
   document.getElementById('googleSignupBtn').addEventListener('click', handleGoogleAuth);
-
-  // ============================================
-  // FORGOT PASSWORD
-  // ============================================
-  document.getElementById('forgotPasswordLink').addEventListener('click', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
-    if (!email) { 
-      showMessage('Enter your email to receive reset link', 'info'); 
-      return; 
-    }
-    try {
-      await auth.sendPasswordResetEmail(email);
-      showMessage('Password reset sent — check your inbox', 'success');
-    } catch (err) {
-      showMessage(err.message || 'Reset failed', 'error');
-    }
-  });
-
-  // ============================================
-  // AUTH STATE — WITH FLAG CHECK
-  // ============================================
-  auth.onAuthStateChanged((user) => {
-    // DON'T REDIRECT IF WE'RE PROCESSING GOOGLE AUTH
-    if (isProcessingGoogleAuth) {
-      console.log('Skipping auto-redirect (processing Google auth)');
-      return;
-    }
-    
-    if (user) {
-      // For email users, check if verified
-      const isGoogleUser = user.providerData.some(p => p.providerId === 'google.com');
-      
-      if (isGoogleUser || user.emailVerified) {
-        console.log('Auto-redirecting to dashboard');
-        window.location.href = 'dashboard.html';
-      }
-    }
-  });
-
-  // INIT
+  document.getElementById('forgotPasswordLink').addEventListener('click', async (e) => { /* ... */ });
+  auth.onAuthStateChanged((user) => { if (!isProcessingGoogleAuth && user) location.href = 'dashboard.html'; });
   initReferralFromURL();
-  console.log('Login page ready');
 </script>
 </body>
 </html>
