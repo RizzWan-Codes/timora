@@ -390,123 +390,172 @@
   // ============================================
   // EMAIL/PASSWORD SIGNUP
   // ============================================
-  document.getElementById('signupFormElement').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = document.getElementById('signupName').value.trim();
-    const username = document.getElementById('signupUsername').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const confirm = document.getElementById('signupConfirmPassword').value;
-    const referralCode = document.getElementById('signupReferralCode')?.value?.trim()?.toUpperCase() || '';
-    const btnText = document.getElementById('signupBtnText');
-    const spinner = document.getElementById('signupSpinner');
+// ============================================
+// EMAIL/PASSWORD SIGNUP
+// ============================================
+document.getElementById('signupFormElement').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('signupName').value.trim();
+  const username = document.getElementById('signupUsername').value.trim();
+  const email = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  const confirm = document.getElementById('signupConfirmPassword').value;
+  const referralCode = document.getElementById('signupReferralCode')?.value?.trim()?.toUpperCase() || '';
+  const btnText = document.getElementById('signupBtnText');
+  const spinner = document.getElementById('signupSpinner');
 
-    if (password !== confirm) { 
-      showMessage('Passwords do not match', 'error'); 
-      return; 
-    }
-
-    if (!username) {
-      showMessage('Please enter a username', 'error');
-      return;
-    }
-
-    btnText.textContent = 'Creating...';
-    spinner.classList.remove('hidden');
-
-    try {
-      const cred = await auth.createUserWithEmailAndPassword(email, password);
-      const user = cred.user;
-      const avatarUrl = generateAvatar(email);
-      
-      await user.updateProfile({ displayName: name, photoURL: avatarUrl });
-      await user.sendEmailVerification();
-
-      const newUserReferralCode = generateReferralCode(user.uid);
-
-      // COINS: 60 IF REFERRAL, 10 IF NOT
-      const coins = referralCode ? 60 : 10;
-
-      await db.collection('users').doc(user.uid).set({
-        uid: user.uid,
-        name: name,
-        username: username,
-        email: email,
-        logoUrl: avatarUrl,
-        photoURL: avatarUrl,
-        coins: coins,
-        subscription: 'Free',
-        totalFocusMinutes: 0,
-        totalFocusHours: 0,
-        totalSessions: 0,
-        currentStreak: 0,
-        bestStreak: 0,
-        lastActiveDate: getTodayDate(),
-        level: 1,
-        xp: 0,
-        referralCode: newUserReferralCode,
-        referredBy: referralCode || null,
-        referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
-        water: { cups: 0, goal: 8, lastUpdated: getTodayDate() },
-        pomSettings: { focus: 25, short: 5, long: 15, soundType: 'chime', notifications: true, sessionsBeforeLong: 4, autoStart: false },
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-      await db.collection('referralCodes').doc(newUserReferralCode).set({
-        userId: user.uid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-     // GIVE 100 COINS TO REFERRER + CREATE HISTORY ENTRY
-if (referralCode) {
-  try {
-    const codeDoc = await db.collection('referralCodes').doc(referralCode).get();
-    if (codeDoc.exists) {
-      const referrerId = codeDoc.data().userId;
-      if (referrerId && referrerId !== user.uid) {
-        // Give 100 coins + update stats
-        await db.collection('users').doc(referrerId).update({
-          coins: firebase.firestore.FieldValue.increment(100),
-          'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
-          'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
-        });
-        
-        // CREATE REFERRAL HISTORY ENTRY
-        await db.collection('users').doc(referrerId).collection('referrals').add({
-          referredUserId: user.uid,
-          referredName: name || email || 'New User',
-          coinsEarned: 100,
-          status: 'completed',
-          timestamp: Date.now(),
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        
-        console.log('✅ Gave 100 coins to referrer + created history entry');
-      }
-    }
-  } catch (refErr) {
-    console.log('Referrer bonus failed:', refErr);
+  if (password !== confirm) { 
+    showMessage('Passwords do not match', 'error'); 
+    return; 
   }
-}
 
-      await auth.signOut();
+  if (!username) {
+    showMessage('Please enter a username', 'error');
+    return;
+  }
+
+  btnText.textContent = 'Creating...';
+  spinner.classList.remove('hidden');
+
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    const user = cred.user;
+    const avatarUrl = generateAvatar(email);
+    
+    await user.updateProfile({ displayName: name, photoURL: avatarUrl });
+    
+    const newUserReferralCode = generateReferralCode(user.uid);
+
+    // BASE COINS: 10 for normal signup, 50 for referral signup
+    const baseCoins = referralCode ? 50 : 10;
+
+    console.log('=== SIGNUP START ===');
+    console.log('New user:', user.uid, email);
+    console.log('Referral code provided:', referralCode || 'none');
+    console.log('Base coins:', baseCoins);
+
+    // CREATE USER DOCUMENT
+    await db.collection('users').doc(user.uid).set({
+      uid: user.uid,
+      name: name,
+      username: username,
+      email: email,
+      logoUrl: avatarUrl,
+      photoURL: avatarUrl,
+      coins: baseCoins,
+      subscription: 'Free',
+      totalFocusMinutes: 0,
+      totalFocusHours: 0,
+      totalSessions: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      lastActiveDate: getTodayDate(),
+      level: 1,
+      xp: 0,
+      referralCode: newUserReferralCode,
+      referredBy: referralCode || null,
+      referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
+      water: { cups: 0, goal: 8, lastUpdated: getTodayDate() },
+      pomSettings: { focus: 25, short: 5, long: 15, soundType: 'chime', notifications: true, sessionsBeforeLong: 4, autoStart: false },
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log('✅ User document created with', baseCoins, 'coins');
+
+    // CREATE REFERRAL CODE ENTRY
+    await db.collection('referralCodes').doc(newUserReferralCode).set({
+      userId: user.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log('✅ Referral code created:', newUserReferralCode);
+
+    // PROCESS REFERRAL BONUS (if referral code was provided)
+    if (referralCode) {
+      console.log('Processing referral bonus...');
       
-      if (referralCode) {
-        showMessage('🎉 Account created with 50 bonus coins! Check email & login.', 'success');
-      } else {
-        showMessage('Account created! Check email for verification.', 'success');
+      try {
+        // Look up the referrer
+        const codeDoc = await db.collection('referralCodes').doc(referralCode).get();
+        
+        if (codeDoc.exists) {
+          const referrerId = codeDoc.data().userId;
+          console.log('Found referrer:', referrerId);
+          
+          if (referrerId && referrerId !== user.uid) {
+            console.log('Awarding 100 coins to referrer...');
+            
+            // Use batch for atomic operations
+            const batch = db.batch();
+            
+            // Give 100 coins to referrer + update stats
+            const referrerRef = db.collection('users').doc(referrerId);
+            batch.update(referrerRef, {
+              coins: firebase.firestore.FieldValue.increment(100),
+              'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
+              'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
+            });
+            
+            // Create referral history entry in referrer's subcollection
+            const historyRef = db.collection('users').doc(referrerId).collection('referrals').doc();
+            batch.set(historyRef, {
+              referredUserId: user.uid,
+              referredName: name || email || 'New User',
+              referredEmail: email,
+              coinsEarned: 100,
+              status: 'completed',
+              timestamp: Date.now(),
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            // Commit the batch
+            await batch.commit();
+            
+            console.log('✅ Referral bonus complete!');
+            console.log('   → Referrer got +100 coins');
+            console.log('   → History entry created');
+            
+          } else {
+            console.warn('⚠️ Self-referral blocked or invalid referrer');
+          }
+        } else {
+          console.warn('⚠️ Referral code not found:', referralCode);
+        }
+      } catch (refErr) {
+        console.error('❌ Referral bonus failed:', refErr);
+        // Don't block signup if referral fails
       }
-      
-      setTimeout(() => loginTab.click(), 1200);
-      
-    } catch (err) {
-      console.error(err);
-      showMessage(err.message || 'Signup error', 'error');
-    } finally {
+    }
+
+    // Send verification email
+    await user.sendEmailVerification();
+    console.log('✅ Verification email sent');
+
+    // Sign out the user
+    await auth.signOut();
+    console.log('✅ User signed out');
+    
+    // Show success message
+    if (referralCode) {
+      showMessage('🎉 Account created! You got 50 coins, your friend got 100! Check email to verify.', 'success');
+    } else {
+      showMessage('✅ Account created! Check email for verification link.', 'success');
+    }
+    
+    // Switch to login tab
+    setTimeout(() => {
+      loginTab.click();
       btnText.textContent = 'Create account';
       spinner.classList.add('hidden');
-    }
-  });
+    }, 1500);
+    
+  } catch (err) {
+    console.error('❌ Signup error:', err);
+    showMessage(err.message || 'Signup failed', 'error');
+    btnText.textContent = 'Create account';
+    spinner.classList.add('hidden');
+  }
+});
 
   // ============================================
   // GOOGLE AUTH — THE FINAL FIX
@@ -539,82 +588,106 @@ if (referralCode) {
     
     console.log('User exists in Firestore:', snap.exists);
 
-    if (!snap.exists) {
-      // NEW USER
-      const coins = hasReferral ? 60 : 10;
-      console.log('NEW USER - Setting coins to:', coins);
+if (!snap.exists) {
+  // NEW USER
+  const baseCoins = hasReferral ? 50 : 10;
+  console.log('NEW USER - Base coins:', baseCoins);
 
-      await userRef.set({
-        uid: user.uid,
-        name: user.displayName || 'User',
-        email: user.email,
-        photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
-        coins: coins,
-        subscription: 'Free',
-        totalFocusMinutes: 0,
-        totalFocusHours: 0,
-        totalSessions: 0,
-        currentStreak: 0,
-        bestStreak: 0,
-        lastActiveDate: getTodayDate(),
-        level: 1,
-        xp: 0,
-        referralCode: generateReferralCode(user.uid),
-        referredBy: refCode || null,
-        referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+  const newUserReferralCode = generateReferralCode(user.uid);
+
+  // CREATE USER DOCUMENT
+  await userRef.set({
+    uid: user.uid,
+    name: user.displayName || 'User',
+    email: user.email,
+    photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
+    coins: baseCoins,
+    subscription: 'Free',
+    totalFocusMinutes: 0,
+    totalFocusHours: 0,
+    totalSessions: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+    lastActiveDate: getTodayDate(),
+    level: 1,
+    xp: 0,
+    referralCode: newUserReferralCode,
+    referredBy: refCode || null,
+    referralStats: { totalReferrals: 0, pendingReferrals: 0, coinsEarned: 0 },
+    water: { cups: 0, goal: 8, lastUpdated: getTodayDate() },
+    pomSettings: { focus: 25, short: 5, long: 15, soundType: 'chime', notifications: true, sessionsBeforeLong: 4, autoStart: false },
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  
+  console.log('✅ User document created');
+
+  // CREATE REFERRAL CODE ENTRY
+  await db.collection('referralCodes').doc(newUserReferralCode).set({
+    userId: user.uid,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  // PROCESS REFERRAL BONUS
+  if (refCode) {
+    console.log('Processing referral bonus...');
+    
+    try {
+      const codeDoc = await db.collection('referralCodes').doc(refCode).get();
       
-      console.log('User document created with', coins, 'coins');
-
-      // GIVE 100 COINS TO REFERRER + CREATE HISTORY ENTRY
-      if (refCode) {
-        try {
-          const codeDoc = await db.collection('referralCodes').doc(refCode).get();
-          if (codeDoc.exists) {
-            const referrerId = codeDoc.data().userId;
-            if (referrerId && referrerId !== user.uid) {
-              // Give 100 coins + update stats
-              await db.collection('users').doc(referrerId).update({
-                coins: firebase.firestore.FieldValue.increment(100),
-                'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
-                'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
-              });
-              
-              // CREATE REFERRAL HISTORY ENTRY (SHOWS IN DASHBOARD)
-              await db.collection('users').doc(referrerId).collection('referrals').add({
-                referredUserId: user.uid,
-                referredName: user.displayName || user.email || 'New User',
-                coinsEarned: 100,
-                status: 'completed',
-                timestamp: Date.now(),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-              });
-              
-              console.log('✅ Gave 100 coins to referrer + created history entry');
-            }
-          }
-        } catch (refErr) {
-          console.log('Referrer bonus failed:', refErr);
+      if (codeDoc.exists) {
+        const referrerId = codeDoc.data().userId;
+        console.log('Found referrer:', referrerId);
+        
+        if (referrerId && referrerId !== user.uid) {
+          console.log('Awarding 100 coins to referrer...');
+          
+          // Use batch for atomic operations
+          const batch = db.batch();
+          
+          // Give 100 coins to referrer + update stats
+          const referrerRef = db.collection('users').doc(referrerId);
+          batch.update(referrerRef, {
+            coins: firebase.firestore.FieldValue.increment(100),
+            'referralStats.totalReferrals': firebase.firestore.FieldValue.increment(1),
+            'referralStats.coinsEarned': firebase.firestore.FieldValue.increment(100)
+          });
+          
+          // Create referral history entry
+          const historyRef = db.collection('users').doc(referrerId).collection('referrals').doc();
+          batch.set(historyRef, {
+            referredUserId: user.uid,
+            referredName: user.displayName || user.email || 'New User',
+            referredEmail: user.email,
+            coinsEarned: 100,
+            status: 'completed',
+            timestamp: Date.now(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          
+          await batch.commit();
+          
+          console.log('✅ Referral bonus complete!');
         }
       }
+    } catch (refErr) {
+      console.error('❌ Referral bonus failed:', refErr);
+    }
+  }
 
-      // SIGN OUT
-      await auth.signOut();
-      console.log('User signed out after account creation');
-      
-      // SHOW MESSAGE
-      if (hasReferral) {
-        showMessage('🎉 Account created with 50 bonus coins! Now login with Google.', 'success');
-      } else {
-        showMessage('Account created! Now login with Google.', 'success');
-      }
-      
-      // SWITCH TO LOGIN TAB
-      setTimeout(() => {
-        loginTab.click();
-        isProcessingGoogleAuth = false;
-      }, 1000);
+  // Sign out and show message
+  await auth.signOut();
+  console.log('User signed out after account creation');
+  
+  if (hasReferral) {
+    showMessage('🎉 Account created! You got 50 coins, your friend got 100! Now login.', 'success');
+  } else {
+    showMessage('✅ Account created! Now login with Google.', 'success');
+  }
+  
+  setTimeout(() => {
+    loginTab.click();
+    isProcessingGoogleAuth = false;
+  }, 1500);
       
     } else {
   // EXISTING USER — GO TO DASHBOARD
