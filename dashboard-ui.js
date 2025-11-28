@@ -276,7 +276,32 @@ let state = {
     topSubjects: []
   },
   currentTaskId: null,
-  currentTaskName: null
+  currentTaskName: null,
+
+    aiTeacher: {
+    messages: [],
+    questionsToday: 0,
+    questionsLimit: 20,
+    selectedSubject: null,
+    recentTopics: [],
+    lastReset: null
+  },
+  
+  // Referrals state
+  referrals: {
+    code: null,
+    totalReferrals: 0,
+    pendingReferrals: 0,
+    coinsEarned: 0,
+    history: [],
+    milestones: [
+      { count: 5, reward: '200 bonus coins', unlocked: false },
+      { count: 10, reward: 'Free month Standard', unlocked: false },
+      { count: 25, reward: 'Exclusive merch', unlocked: false },
+      { count: 50, reward: 'Lifetime Premium!', unlocked: false }
+    ]
+  }
+
 };
 
 // Active listeners for cleanup
@@ -386,6 +411,11 @@ const weeklyStatsRef = (uid, weekStart = getWeekStart()) => doc(db, 'users', uid
 const tasksColRef = (uid) => collection(db, 'users', uid, 'tasks');
 const projectsColRef = (uid) => collection(db, 'users', uid, 'projects');
 const sessionsColRef = (uid) => collection(db, 'users', uid, 'sessions');
+// Add after existing document references (around line 220)
+const aiMessagesColRef = (uid) => collection(db, 'users', uid, 'aiMessages');
+const aiUsageRef = (uid, date = getTodayDate()) => doc(db, 'users', uid, 'aiUsage', date);
+const referralsColRef = (uid) => collection(db, 'users', uid, 'referrals');
+const referralCodesRef = () => collection(db, 'referralCodes');
 
 /* ============================================================================
    REAL-TIME DATA LOADING & SYNCING
@@ -568,6 +598,20 @@ function setupRealtimeListeners(uid) {
 
   // 7. Load analytics data
   loadAnalyticsData(uid);
+
+  // Add inside setupRealtimeListeners function, after other listeners:
+
+// 8. Referrals listener
+const referralsUnsub = onSnapshot(
+  query(referralsColRef(uid), orderBy('timestamp', 'desc'), limit(20)),
+  (snap) => {
+    console.log('Referrals updated:', snap.size, 'referrals');
+    state.referrals.history = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderReferralHistory();
+  },
+  (err) => console.error('Referrals listener error:', err)
+);
+activeListeners.push(referralsUnsub);
 }
 
 async function loadAnalyticsData(uid) {
@@ -2709,6 +2753,13 @@ function showSection(name) {
   if (name === 'analytics') {
     loadAnalyticsData(auth.currentUser?.uid);
   }
+  // ADD THESE:
+  if (name === 'ai-teacher') {
+    initAITeacher();
+  }
+  if (name === 'referrals') {
+    initReferrals();
+  }
 }
 
 /* ============================================================================
@@ -2979,6 +3030,1095 @@ function setupAuthListener() {
    INITIALIZATION
    ============================================================================ */
 
+   /* ============================================================================
+   AI TEACHER - FULLY DYNAMIC
+   ============================================================================ */
+
+const AI_SUBJECTS = [
+  { id: 'math', name: 'Math', color: 'purple' },
+  { id: 'physics', name: 'Physics', color: 'blue' },
+  { id: 'chemistry', name: 'Chemistry', color: 'green' },
+  { id: 'biology', name: 'Biology', color: 'orange' },
+  { id: 'english', name: 'English', color: 'pink' },
+  { id: 'history', name: 'History', color: 'cyan' },
+  { id: 'computer', name: 'Computer Science', color: 'indigo' },
+  { id: 'economics', name: 'Economics', color: 'yellow' }
+];
+
+const AI_TIER_LIMITS = {
+  'Free': 20,
+  'Standard': 100,
+  'Premium': Infinity
+};
+
+async function initAITeacher() {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  // Load AI usage for today
+  await loadAIUsage(user.uid);
+  
+  // Load recent messages
+  await loadAIMessages(user.uid);
+  
+  // Render subjects
+  renderAISubjects();
+  
+  // Render recent topics
+  renderAIRecentTopics();
+  
+  // Update usage UI
+  updateAIUsageUI();
+  
+  // Setup event listeners
+  setupAITeacherEvents();
+}
+
+async function loadAIUsage(uid) {
+  try {
+    const today = getTodayDate();
+    const usageSnap = await getDoc(aiUsageRef(uid, today));
+    
+    if (usageSnap.exists()) {
+      const data = usageSnap.data();
+      state.aiTeacher.questionsToday = data.questionsCount || 0;
+      state.aiTeacher.lastReset = data.date;
+    } else {
+      // New day, reset counter
+      state.aiTeacher.questionsToday = 0;
+      state.aiTeacher.lastReset = today;
+    }
+    
+    // Set limit based on subscription
+    state.aiTeacher.questionsLimit = AI_TIER_LIMITS[state.user.subscription] || 20;
+    
+  } catch (e) {
+    console.error('loadAIUsage error:', e);
+  }
+}
+
+async function loadAIMessages(uid) {
+  try {
+    const q = query(
+      aiMessagesColRef(uid),
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+    const snap = await getDocs(q);
+    
+    state.aiTeacher.messages = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .reverse();
+    
+    // Extract recent topics
+    const topics = new Map();
+    state.aiTeacher.messages.forEach(msg => {
+      if (msg.role === 'user' && msg.subject) {
+        const key = `${msg.subject}:${msg.content.substring(0, 30)}`;
+        if (!topics.has(key)) {
+          topics.set(key, {
+            subject: msg.subject,
+            preview: msg.content.substring(0, 40) + '...',
+            timestamp: msg.timestamp
+          });
+        }
+      }
+    });
+    
+    state.aiTeacher.recentTopics = Array.from(topics.values()).slice(0, 5);
+    
+    renderAIMessages();
+    renderAIRecentTopics();
+    
+  } catch (e) {
+    console.error('loadAIMessages error:', e);
+  }
+}
+
+function renderAIMessages() {
+  const container = $('#aiChatMessages');
+  if (!container) return;
+  
+  if (state.aiTeacher.messages.length === 0) {
+    container.innerHTML = `
+      <div class="flex gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white text-lg flex-shrink-0">
+          🤖
+        </div>
+        <div class="flex-1 bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
+          <p class="text-slate-700">Hello! I'm your AI Teacher. I can help you with:</p>
+          <ul class="mt-2 text-sm text-slate-600 space-y-1">
+            <li>• Explaining complex concepts</li>
+            <li>• Solving math problems step-by-step</li>
+            <li>• Creating study summaries</li>
+            <li>• Quiz practice & test prep</li>
+          </ul>
+          <p class="mt-3 text-slate-700">What would you like to learn today? 📚</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = state.aiTeacher.messages.map(msg => {
+    if (msg.role === 'user') {
+      return `
+        <div class="flex gap-3 justify-end">
+          <div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl rounded-tr-none p-4 max-w-[80%] shadow-sm">
+            ${msg.subject ? `<div class="text-xs opacity-80 mb-1">${escapeHtml(msg.subject)}</div>` : ''}
+            <p>${escapeHtml(msg.content)}</p>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="flex gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white text-lg flex-shrink-0">
+            🤖
+          </div>
+          <div class="flex-1 bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
+            <div class="text-slate-700 whitespace-pre-wrap">${escapeHtml(msg.content)}</div>
+          </div>
+        </div>
+      `;
+    }
+  }).join('');
+  
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderAISubjects() {
+  const grid = $('#aiSubjectGrid');
+  if (!grid) return;
+  
+  const colorMap = {
+    purple: 'bg-purple-100 text-purple-700 hover:bg-purple-200',
+    blue: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
+    green: 'bg-green-100 text-green-700 hover:bg-green-200',
+    orange: 'bg-orange-100 text-orange-700 hover:bg-orange-200',
+    pink: 'bg-pink-100 text-pink-700 hover:bg-pink-200',
+    cyan: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200',
+    indigo: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200',
+    yellow: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+  };
+  
+  grid.innerHTML = AI_SUBJECTS.map(subj => {
+    const isActive = state.aiTeacher.selectedSubject === subj.id;
+    const baseClass = colorMap[subj.color] || colorMap.purple;
+    const activeClass = isActive ? 'ring-2 ring-offset-2 ring-cyan-500' : '';
+    
+    return `
+      <button class="subject-btn px-3 py-2 rounded-lg ${baseClass} ${activeClass} text-sm font-medium transition-all"
+              data-subject="${subj.id}" data-name="${subj.name}">
+        ${subj.name}
+      </button>
+    `;
+  }).join('');
+}
+
+function renderAIRecentTopics() {
+  const container = $('#aiRecentTopics');
+  if (!container) return;
+  
+  if (state.aiTeacher.recentTopics.length === 0) {
+    container.innerHTML = `
+      <div class="text-sm text-slate-400 text-center py-4">
+        No recent topics yet
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = state.aiTeacher.recentTopics.map(topic => {
+    const date = new Date(topic.timestamp);
+    const timeAgo = getTimeAgo(date);
+    
+    return `
+      <div class="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all ai-topic-item"
+           data-subject="${escapeHtml(topic.subject)}" data-preview="${escapeHtml(topic.preview)}">
+        <div class="text-sm font-medium text-slate-700 truncate">${escapeHtml(topic.preview)}</div>
+        <div class="text-xs text-slate-500">${escapeHtml(topic.subject)} • ${timeAgo}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateAIUsageUI() {
+  const used = state.aiTeacher.questionsToday;
+  const limit = state.aiTeacher.questionsLimit;
+  const isUnlimited = limit === Infinity;
+  
+  setText('aiQuestionsUsed', used);
+  setText('aiQuestionsLimit', isUnlimited ? '∞' : limit);
+  
+  const bar = $('#aiUsageBar');
+  if (bar) {
+    const percent = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
+    bar.style.width = `${percent}%`;
+    
+    if (percent >= 90) {
+      bar.classList.add('from-red-500', 'to-orange-500');
+      bar.classList.remove('from-cyan-500', 'to-blue-500');
+    } else {
+      bar.classList.remove('from-red-500', 'to-orange-500');
+      bar.classList.add('from-cyan-500', 'to-blue-500');
+    }
+  }
+  
+  const tierText = $('#aiUsageTierText');
+  if (tierText) {
+    if (isUnlimited) {
+      tierText.textContent = 'Premium: Unlimited questions!';
+      tierText.classList.add('text-purple-600', 'font-medium');
+    } else {
+      tierText.textContent = `${state.user.subscription} tier: ${limit} questions/day`;
+    }
+  }
+  
+  const upgradeBtn = $('#aiUpgradeBtn');
+  if (upgradeBtn) {
+    upgradeBtn.style.display = state.user.subscription === 'Premium' ? 'none' : 'block';
+  }
+}
+
+async function sendAIMessage(content, subject = null) {
+  const user = auth.currentUser;
+  if (!user) return toast('Login required');
+  
+  if (!content.trim()) return toast('Please enter a question');
+  
+  // Check usage limit
+  const limit = AI_TIER_LIMITS[state.user.subscription] || 20;
+  if (state.aiTeacher.questionsToday >= limit && limit !== Infinity) {
+    toast('Daily limit reached! Upgrade to continue.');
+    return;
+  }
+  
+  const selectedSubject = subject || state.aiTeacher.selectedSubject;
+  const subjectName = AI_SUBJECTS.find(s => s.id === selectedSubject)?.name || 'General';
+  
+  // Add user message to state and UI immediately
+  const userMessage = {
+    role: 'user',
+    content: content.trim(),
+    subject: subjectName,
+    timestamp: Date.now()
+  };
+  
+  state.aiTeacher.messages.push(userMessage);
+  renderAIMessages();
+  
+  // Clear input
+  const input = $('#aiTeacherInput');
+  if (input) input.value = '';
+  
+  // Show typing indicator
+  const container = $('#aiChatMessages');
+  if (container) {
+    container.innerHTML += `
+      <div id="aiTyping" class="flex gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white text-lg flex-shrink-0">
+          🤖
+        </div>
+        <div class="flex-1 bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
+          <div class="flex items-center gap-2 text-slate-400">
+            <div class="animate-bounce">●</div>
+            <div class="animate-bounce" style="animation-delay: 0.1s">●</div>
+            <div class="animate-bounce" style="animation-delay: 0.2s">●</div>
+          </div>
+        </div>
+      </div>
+    `;
+    container.scrollTop = container.scrollHeight;
+  }
+  
+  try {
+    // Save user message to Firebase
+    await addDoc(aiMessagesColRef(user.uid), userMessage);
+    
+    // Update usage count
+    await setDoc(aiUsageRef(user.uid), {
+      date: getTodayDate(),
+      questionsCount: increment(1)
+    }, { merge: true });
+    
+    state.aiTeacher.questionsToday++;
+    updateAIUsageUI();
+    
+    // Call AI API (or use fallback)
+    let aiResponse;
+    try {
+      const response = await fetch('/api/ai-teacher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: content,
+          subject: subjectName,
+          userId: user.uid
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        aiResponse = data.response;
+      } else {
+        throw new Error('API error');
+      }
+    } catch (e) {
+      // Fallback response
+      aiResponse = generateFallbackResponse(content, subjectName);
+    }
+    
+    // Remove typing indicator
+    $('#aiTyping')?.remove();
+    
+    // Add AI response
+    const aiMessage = {
+      role: 'assistant',
+      content: aiResponse,
+      timestamp: Date.now()
+    };
+    
+    state.aiTeacher.messages.push(aiMessage);
+    renderAIMessages();
+    
+    // Save AI response to Firebase
+    await addDoc(aiMessagesColRef(user.uid), aiMessage);
+    
+    // Award coins for asking questions (1 coin per 5 questions)
+    if (state.aiTeacher.questionsToday % 5 === 0) {
+      await updateDoc(userDocRef(user.uid), {
+        coins: increment(2)
+      });
+      toast('🪙 +2 coins for learning!');
+    }
+    
+  } catch (e) {
+    console.error('sendAIMessage error:', e);
+    $('#aiTyping')?.remove();
+    toast('Failed to get response. Please try again.');
+  }
+}
+
+function generateFallbackResponse(question, subject) {
+  const responses = {
+    'Math': `Great question about ${subject}! Here's a helpful approach:
+
+1. First, identify the key concepts involved
+2. Break down the problem into smaller steps
+3. Apply relevant formulas or methods
+4. Check your work by substituting back
+
+Would you like me to explain any specific formula or concept in more detail?`,
+    
+    'Physics': `Interesting physics question! Let me help you understand this:
+
+• Start by identifying the physical principles involved
+• Draw a diagram if it helps visualize the problem
+• List the known quantities and what you need to find
+• Apply the appropriate equations
+
+Physics is all about understanding the relationships between quantities. What specific aspect would you like me to clarify?`,
+    
+    'default': `That's a great question! Here's my explanation:
+
+Based on your question about "${question.substring(0, 50)}...", I'd recommend:
+
+1. Breaking down the concept into fundamental parts
+2. Understanding the underlying principles
+3. Practicing with examples
+4. Connecting it to what you already know
+
+Would you like me to go deeper into any particular aspect of this topic?`
+  };
+  
+  return responses[subject] || responses['default'];
+}
+
+function getTimeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  
+  return date.toLocaleDateString();
+}
+
+function setupAITeacherEvents() {
+  // Send message
+  $('#aiTeacherSend')?.addEventListener('click', () => {
+    const input = $('#aiTeacherInput');
+    if (input?.value) sendAIMessage(input.value);
+  });
+  
+  // Enter key
+  $('#aiTeacherInput')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const input = e.target;
+      if (input?.value) sendAIMessage(input.value);
+    }
+  });
+  
+  // Subject selection
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('subject-btn')) {
+      const subjectId = e.target.dataset.subject;
+      state.aiTeacher.selectedSubject = subjectId;
+      renderAISubjects();
+      toast(`Subject: ${e.target.dataset.name}`);
+    }
+  });
+  
+  // Quick action buttons
+  $all('.ai-quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prompt = btn.dataset.prompt;
+      const input = $('#aiTeacherInput');
+      if (input && prompt) {
+        input.value = prompt + ' ';
+        input.focus();
+      }
+    });
+  });
+  
+  // Recent topic click
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.ai-topic-item')) {
+      const item = e.target.closest('.ai-topic-item');
+      const preview = item.dataset.preview;
+      if (preview) {
+        const input = $('#aiTeacherInput');
+        if (input) {
+          input.value = `Continue explaining: ${preview}`;
+          input.focus();
+        }
+      }
+    }
+  });
+  
+  // Upgrade button
+  $('#aiUpgradeBtn')?.addEventListener('click', () => {
+    showSection('subscription');
+  });
+}
+
+/* ============================================================================
+   REFERRALS - FULLY DYNAMIC
+   ============================================================================ */
+
+/* ============================================================================
+   REFERRALS - FULLY DYNAMIC (COMPLETE FIXED VERSION)
+   ============================================================================ */
+
+const REFERRAL_CONFIG = {
+  coinsPerReferral: 100,
+  bonusForFriend: 50,
+  milestones: [
+    { count: 5, reward: '200 bonus coins', icon: '🥉' },
+    { count: 10, reward: 'Free month Standard', icon: '🥈' },
+    { count: 25, reward: 'Exclusive merch', icon: '🥇' },
+    { count: 50, reward: 'Lifetime Premium!', icon: '💎' }
+  ]
+};
+
+// Track if events are already set up to prevent duplicate listeners
+let referralEventsInitialized = false;
+
+async function initReferrals() {
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('initReferrals: No user logged in');
+    return;
+  }
+  
+  console.log('🔄 Initializing referrals for user:', user.uid);
+  
+  try {
+    // Step 1: Get or generate referral code
+    await initReferralCode(user.uid);
+    console.log('✅ Referral code loaded:', state.referrals.code);
+    
+    // Step 2: Load referral history from subcollection
+    await loadReferralHistory(user.uid);
+    console.log('✅ Referral history loaded:', state.referrals.history.length, 'entries');
+    
+    // Step 3: Render all UI components
+    renderReferralLink();
+    renderReferralStats();
+    renderReferralHistory();
+    renderReferralMilestones();
+    
+    // Step 4: Setup event listeners (only once)
+    setupReferralEvents();
+    
+    console.log('✅ Referrals fully initialized:', {
+      code: state.referrals.code,
+      totalReferrals: state.referrals.totalReferrals,
+      pendingReferrals: state.referrals.pendingReferrals,
+      coinsEarned: state.referrals.coinsEarned,
+      historyCount: state.referrals.history.length
+    });
+    
+  } catch (e) {
+    console.error('❌ initReferrals error:', e);
+    toast('Failed to load referral data');
+  }
+}
+
+async function initReferralCode(uid) {
+  try {
+    const userSnap = await getDoc(userDocRef(uid));
+    
+    if (!userSnap.exists()) {
+      console.warn('User document not found for referral code init');
+      return;
+    }
+    
+    const userData = userSnap.data();
+    
+    // Check if user already has a referral code
+    if (userData?.referralCode) {
+      state.referrals.code = userData.referralCode;
+      console.log('Existing referral code found:', state.referrals.code);
+    } else {
+      // Generate new referral code
+      const code = generateReferralCode(uid);
+      state.referrals.code = code;
+      console.log('Generated new referral code:', code);
+      
+      // Save to user document
+      await updateDoc(userDocRef(uid), {
+        referralCode: code,
+        referralStats: {
+          totalReferrals: 0,
+          pendingReferrals: 0,
+          coinsEarned: 0
+        }
+      });
+      
+      // Create entry in referralCodes collection for lookup
+      await setDoc(doc(db, 'referralCodes', code), {
+        userId: uid,
+        createdAt: new Date().toISOString()
+      });
+      
+      console.log('Referral code saved to Firestore');
+    }
+    
+    // Load referral stats from user document
+    if (userData?.referralStats) {
+      state.referrals.totalReferrals = userData.referralStats.totalReferrals || 0;
+      state.referrals.pendingReferrals = userData.referralStats.pendingReferrals || 0;
+      state.referrals.coinsEarned = userData.referralStats.coinsEarned || 0;
+    } else {
+      // Initialize with defaults
+      state.referrals.totalReferrals = 0;
+      state.referrals.pendingReferrals = 0;
+      state.referrals.coinsEarned = 0;
+    }
+    
+  } catch (e) {
+    console.error('initReferralCode error:', e);
+    throw e;
+  }
+}
+
+function generateReferralCode(uid) {
+  const prefix = 'TIM';
+  const suffix = uid.substring(0, 6).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `${prefix}${suffix}${random}`;
+}
+
+async function loadReferralHistory(uid) {
+  try {
+    // Define the referrals subcollection reference
+    const referralsRef = collection(db, 'users', uid, 'referrals');
+    const q = query(
+      referralsRef,
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+    
+    const snap = await getDocs(q);
+    
+    state.referrals.history = snap.docs.map(d => ({ 
+      id: d.id, 
+      ...d.data() 
+    }));
+    
+    // Recalculate stats from actual history for accuracy
+    const completedReferrals = state.referrals.history.filter(r => r.status === 'completed');
+    const pendingReferrals = state.referrals.history.filter(r => r.status === 'pending');
+    
+    // Update state with accurate counts from history
+    if (state.referrals.history.length > 0) {
+      state.referrals.totalReferrals = completedReferrals.length;
+      state.referrals.pendingReferrals = pendingReferrals.length;
+      state.referrals.coinsEarned = completedReferrals.reduce(
+        (sum, r) => sum + (r.coinsEarned || REFERRAL_CONFIG.coinsPerReferral), 
+        0
+      );
+    }
+    
+    console.log('Referral history loaded:', {
+      total: state.referrals.history.length,
+      completed: completedReferrals.length,
+      pending: pendingReferrals.length,
+      coinsEarned: state.referrals.coinsEarned
+    });
+    
+  } catch (e) {
+    console.error('loadReferralHistory error:', e);
+    state.referrals.history = [];
+  }
+}
+
+function renderReferralLink() {
+  const code = state.referrals.code || '---';
+  const link = `${window.location.origin}/login.html?ref=${code}`;
+  
+  console.log('Rendering referral link:', link);
+  
+  // Update link input
+  const linkInput = $('#referralLink');
+  if (linkInput) {
+    linkInput.value = link;
+  }
+  
+  // Update code display
+  const codeDisplay = $('#referralCode');
+  if (codeDisplay) {
+    codeDisplay.innerHTML = `Your code: <span class="font-mono font-bold text-emerald-600">${escapeHtml(code)}</span>`;
+  }
+  
+  // Update reward amounts
+  const coinsPerReferralEl = $('#coinsPerReferral');
+  if (coinsPerReferralEl) {
+    coinsPerReferralEl.textContent = REFERRAL_CONFIG.coinsPerReferral;
+  }
+  
+  const bonusForFriendEl = $('#bonusForFriend');
+  if (bonusForFriendEl) {
+    bonusForFriendEl.textContent = REFERRAL_CONFIG.bonusForFriend;
+  }
+}
+
+function renderReferralStats() {
+  console.log('Rendering referral stats:', {
+    total: state.referrals.totalReferrals,
+    pending: state.referrals.pendingReferrals,
+    earned: state.referrals.coinsEarned
+  });
+  
+  // Total referrals
+  const totalEl = $('#totalReferrals');
+  if (totalEl) {
+    totalEl.textContent = state.referrals.totalReferrals || 0;
+  }
+  
+  // Pending referrals
+  const pendingEl = $('#pendingReferrals');
+  if (pendingEl) {
+    pendingEl.textContent = state.referrals.pendingReferrals || 0;
+  }
+  
+  // Coins earned
+  const earnedEl = $('#earnedFromReferrals');
+  if (earnedEl) {
+    earnedEl.textContent = formatNumber(state.referrals.coinsEarned || 0);
+  }
+}
+
+function renderReferralHistory() {
+  const container = $('#referralHistory');
+  const emptyState = $('#noReferrals');
+  
+  if (!container) {
+    console.warn('Referral history container not found');
+    return;
+  }
+  
+  console.log('Rendering referral history:', state.referrals.history.length, 'items');
+  
+  // Show empty state if no history
+  if (!state.referrals.history || state.referrals.history.length === 0) {
+    container.innerHTML = '';
+    if (emptyState) {
+      emptyState.classList.remove('hidden');
+    }
+    return;
+  }
+  
+  // Hide empty state
+  if (emptyState) {
+    emptyState.classList.add('hidden');
+  }
+  
+  // Render history items
+  container.innerHTML = state.referrals.history.map(ref => {
+    // Handle different timestamp formats
+    let timestamp;
+    if (ref.timestamp) {
+      timestamp = typeof ref.timestamp === 'number' ? ref.timestamp : ref.timestamp.toMillis?.() || Date.now();
+    } else if (ref.createdAt) {
+      timestamp = typeof ref.createdAt === 'number' ? ref.createdAt : ref.createdAt.toMillis?.() || Date.now();
+    } else {
+      timestamp = Date.now();
+    }
+    
+    const date = new Date(timestamp);
+    const timeAgo = getTimeAgo(date);
+    const isCompleted = ref.status === 'completed';
+    const initial = (ref.referredName || 'U').charAt(0).toUpperCase();
+    
+    // Styling based on status
+    const bgClass = isCompleted 
+      ? 'from-emerald-50 to-green-50 border-emerald-200'
+      : 'from-amber-50 to-yellow-50 border-amber-200';
+    
+    const statusBadge = isCompleted
+      ? '<span class="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Completed</span>'
+      : '<span class="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Pending</span>';
+    
+    const coinsDisplay = isCompleted
+      ? `<span class="text-emerald-600 font-semibold">+${ref.coinsEarned || REFERRAL_CONFIG.coinsPerReferral} coins</span>`
+      : `<span class="text-amber-600 font-semibold">Pending...</span>`;
+    
+    const avatarColor = isCompleted 
+      ? 'bg-emerald-200 text-emerald-700' 
+      : 'bg-amber-200 text-amber-700';
+    
+    return `
+      <div class="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r ${bgClass} border transition-all hover:shadow-sm">
+        <div class="flex items-center gap-4">
+          <div class="w-10 h-10 rounded-full ${avatarColor} flex items-center justify-center font-bold text-lg">
+            ${initial}
+          </div>
+          <div>
+            <div class="font-medium text-slate-800">${escapeHtml(ref.referredName || 'Friend')}</div>
+            <div class="text-xs text-slate-500">${isCompleted ? 'Joined' : 'Invited'} ${timeAgo}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          ${coinsDisplay}
+          ${statusBadge}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderReferralMilestones() {
+  const container = $('#referralMilestones');
+  if (!container) {
+    console.warn('Referral milestones container not found');
+    return;
+  }
+  
+  const totalRefs = state.referrals.totalReferrals || 0;
+  
+  console.log('Rendering milestones, total referrals:', totalRefs);
+  
+  container.innerHTML = REFERRAL_CONFIG.milestones.map(milestone => {
+    const unlocked = totalRefs >= milestone.count;
+    const remaining = milestone.count - totalRefs;
+    
+    const borderClass = unlocked ? 'border-emerald-400' : 'border-slate-200';
+    const bgClass = unlocked ? 'from-emerald-50 to-green-50' : 'from-slate-100 to-slate-50';
+    
+    const checkmark = unlocked ? `
+      <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs shadow-md">✓</div>
+    ` : '';
+    
+    const progressText = !unlocked && remaining > 0 
+      ? `<div class="text-xs text-slate-400 mt-1">${remaining} more to go</div>` 
+      : '';
+    
+    return `
+      <div class="p-4 rounded-xl bg-gradient-to-br ${bgClass} border-2 ${borderClass} relative transition-all hover:shadow-sm ${unlocked ? 'ring-1 ring-emerald-200' : ''}">
+        ${checkmark}
+        <div class="text-2xl mb-2">${milestone.icon}</div>
+        <div class="font-bold text-slate-800">${milestone.count} Referrals</div>
+        <div class="text-sm text-slate-500">${milestone.reward}</div>
+        ${progressText}
+      </div>
+    `;
+  }).join('');
+}
+
+function setupReferralEvents() {
+  // Prevent duplicate event listeners
+  if (referralEventsInitialized) {
+    console.log('Referral events already initialized, skipping');
+    return;
+  }
+  
+  referralEventsInitialized = true;
+  console.log('Setting up referral event listeners');
+  
+  // Copy link button
+  const copyBtn = $('#copyReferralBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const input = $('#referralLink');
+      if (!input) return;
+      
+      try {
+        // Try modern clipboard API first
+        await navigator.clipboard.writeText(input.value);
+        
+        // Visual feedback
+        copyBtn.textContent = 'Copied!';
+        copyBtn.classList.remove('bg-emerald-500');
+        copyBtn.classList.add('bg-green-600');
+        
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+          copyBtn.classList.remove('bg-green-600');
+          copyBtn.classList.add('bg-emerald-500');
+        }, 2000);
+        
+        toast('📋 Referral link copied!');
+        
+      } catch (err) {
+        // Fallback for older browsers
+        input.select();
+        input.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+        
+        toast('📋 Referral link copied!');
+      }
+    });
+  }
+  
+  // WhatsApp share button
+  const whatsappBtn = $('#shareRefWhatsapp');
+  if (whatsappBtn) {
+    whatsappBtn.addEventListener('click', () => {
+      const code = state.referrals.code || '';
+      const link = `${window.location.origin}/login.html?ref=${code}`;
+      const message = `🎯 Join me on Timora - the best study companion app! 📚✨
+
+Use my referral link to get ${REFERRAL_CONFIG.bonusForFriend} bonus coins when you sign up:
+${link}
+
+Let's study smarter together! 💪`;
+      
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+    });
+  }
+  
+  // Twitter share button
+  const twitterBtn = $('#shareRefTwitter');
+  if (twitterBtn) {
+    twitterBtn.addEventListener('click', () => {
+      const code = state.referrals.code || '';
+      const link = `${window.location.origin}/login.html?ref=${code}`;
+      const message = `Level up your study game with @TimoraApp! 🚀📚 
+
+Join me and get ${REFERRAL_CONFIG.bonusForFriend} bonus coins!`;
+      
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}&url=${encodeURIComponent(link)}`, '_blank');
+    });
+  }
+  
+  // Email share button
+  const emailBtn = $('#shareRefEmail');
+  if (emailBtn) {
+    emailBtn.addEventListener('click', () => {
+      const code = state.referrals.code || '';
+      const link = `${window.location.origin}/login.html?ref=${code}`;
+      
+      const subject = 'Join me on Timora - Study smarter together! 📚';
+      const body = `Hey!
+
+I've been using Timora to boost my study productivity and thought you might like it too!
+
+Features include:
+✅ AI-powered study planning
+✅ Pomodoro timer with stats
+✅ Progress tracking & analytics
+✅ Earn coins & rewards
+
+Use my referral link to sign up and get ${REFERRAL_CONFIG.bonusForFriend} bonus coins:
+${link}
+
+Let's crush our study goals together! 💪📚
+
+- Sent from Timora`;
+      
+      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    });
+  }
+  
+  console.log('✅ Referral event listeners initialized');
+}
+
+// Helper function for time ago display
+function getTimeAgo(date) {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+    return 'Recently';
+  }
+  
+  const now = new Date();
+  const seconds = Math.floor((now - date) / 1000);
+  
+  if (seconds < 0) return 'Just now';
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 2592000) return `${Math.floor(seconds / 604800)}w ago`;
+  if (seconds < 31536000) return `${Math.floor(seconds / 2592000)}mo ago`;
+  
+  return date.toLocaleDateString();
+}
+
+/* ============================================================================
+   PROCESS REFERRAL - Called from login.html when new user signs up
+   ============================================================================ */
+
+async function processReferral(referralCode, newUserId, newUserName) {
+  if (!referralCode || !referralCode.trim()) {
+    console.log('processReferral: No referral code provided');
+    return false;
+  }
+  
+  const code = referralCode.trim().toUpperCase();
+  console.log('🔄 Processing referral:', { code, newUserId, newUserName });
+  
+  try {
+    // Step 1: Look up the referrer from referralCodes collection
+    const codeDocRef = doc(db, 'referralCodes', code);
+    const codeSnap = await getDoc(codeDocRef);
+    
+    if (!codeSnap.exists()) {
+      console.warn('❌ Invalid referral code - not found in database:', code);
+      return false;
+    }
+    
+    const referrerId = codeSnap.data().userId;
+    console.log('Found referrer ID:', referrerId);
+    
+    // Step 2: Prevent self-referral
+    if (referrerId === newUserId) {
+      console.warn('❌ Self-referral attempted - blocked');
+      return false;
+    }
+    
+    // Step 3: Verify referrer exists
+    const referrerDocRef = userDocRef(referrerId);
+    const referrerSnap = await getDoc(referrerDocRef);
+    
+    if (!referrerSnap.exists()) {
+      console.warn('❌ Referrer user document not found:', referrerId);
+      return false;
+    }
+    
+    const referrerData = referrerSnap.data();
+    console.log('Referrer found:', referrerData.name || referrerData.email);
+    
+    // Step 4: Use batch write for atomic operations
+    const batch = writeBatch(db);
+    
+    // 4a. Award coins to REFERRER
+    batch.update(referrerDocRef, {
+      coins: increment(REFERRAL_CONFIG.coinsPerReferral),
+      'referralStats.totalReferrals': increment(1),
+      'referralStats.coinsEarned': increment(REFERRAL_CONFIG.coinsPerReferral)
+    });
+    console.log(`📝 Queued: Award ${REFERRAL_CONFIG.coinsPerReferral} coins to referrer`);
+    
+    // 4b. Award bonus coins to NEW USER
+    const newUserDocRef = userDocRef(newUserId);
+    batch.update(newUserDocRef, {
+      coins: increment(REFERRAL_CONFIG.bonusForFriend),
+      referredBy: referrerId
+    });
+    console.log(`📝 Queued: Award ${REFERRAL_CONFIG.bonusForFriend} bonus coins to new user`);
+    
+    // 4c. Create referral history entry in referrer's subcollection
+    const referralHistoryRef = doc(collection(db, 'users', referrerId, 'referrals'));
+    batch.set(referralHistoryRef, {
+      referredUserId: newUserId,
+      referredName: newUserName || 'New User',
+      coinsEarned: REFERRAL_CONFIG.coinsPerReferral,
+      status: 'completed',
+      timestamp: Date.now(),
+      createdAt: serverTimestamp()
+    });
+    console.log('📝 Queued: Create referral history entry');
+    
+    // Step 5: Commit all changes atomically
+    await batch.commit();
+    
+    console.log('✅ Referral processed successfully!');
+    console.log(`   → Referrer (${referrerId}) received +${REFERRAL_CONFIG.coinsPerReferral} coins`);
+    console.log(`   → New user (${newUserId}) received +${REFERRAL_CONFIG.bonusForFriend} coins`);
+    
+    return true;
+    
+  } catch (e) {
+    console.error('❌ processReferral error:', e);
+    console.error('Error details:', e.message, e.code);
+    return false;
+  }
+}
+
+// Export for use in login.html signup flow
+window.processReferral = processReferral;
+
+// Also export config for consistency
+window.REFERRAL_CONFIG = REFERRAL_CONFIG;
+
+/* ============================================================================
+   REALTIME LISTENER FOR REFERRALS (Optional - add to setupRealtimeListeners)
+   ============================================================================ */
+
+function setupReferralRealtimeListener(uid) {
+  console.log('Setting up referral realtime listener for:', uid);
+  
+  const referralsRef = collection(db, 'users', uid, 'referrals');
+  const q = query(referralsRef, orderBy('timestamp', 'desc'), limit(50));
+  
+  const unsubscribe = onSnapshot(q, (snap) => {
+    console.log('📡 Referrals realtime update:', snap.size, 'documents');
+    
+    state.referrals.history = snap.docs.map(d => ({ 
+      id: d.id, 
+      ...d.data() 
+    }));
+    
+    // Recalculate stats
+    const completed = state.referrals.history.filter(r => r.status === 'completed');
+    const pending = state.referrals.history.filter(r => r.status === 'pending');
+    
+    state.referrals.totalReferrals = completed.length;
+    state.referrals.pendingReferrals = pending.length;
+    state.referrals.coinsEarned = completed.reduce(
+      (sum, r) => sum + (r.coinsEarned || REFERRAL_CONFIG.coinsPerReferral), 
+      0
+    );
+    
+    // Re-render UI
+    renderReferralStats();
+    renderReferralHistory();
+    renderReferralMilestones();
+    
+  }, (err) => {
+    console.error('Referrals realtime listener error:', err);
+  });
+  
+  return unsubscribe;
+}
+
 function initializeDashboard() {
   console.log('Initializing Timora Dashboard...');
 
@@ -3038,6 +4178,14 @@ window.Timora = {
   updateAllUI,
   populateLeaderboard,
   loadAnalyticsData: () => loadAnalyticsData(auth.currentUser?.uid),
+
+  // AI Teacher
+  getAIState: () => state.aiTeacher,
+  sendAIMessage,
+  
+  // Referrals
+  getReferralState: () => state.referrals,
+  processReferral,
   
   // Force session complete (for testing)
   forceComplete: handleSessionComplete,
