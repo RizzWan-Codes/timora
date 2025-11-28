@@ -2912,7 +2912,8 @@ function initGlobalEventListeners() {
    ============================================================================ */
 
 function setupAuthListener() {
-  console.log('Setting up auth listener...');
+    // Clear the login flag to prevent redirect loops
+  window.sessionStorage.removeItem('justLoggedIn');
   
   onAuthStateChanged(auth, async (user) => {
     console.log('Auth state changed:', user ? user.email : 'no user');
@@ -2925,7 +2926,6 @@ function setupAuthListener() {
       }, 500);
       return;
     }
-
     console.log('User authenticated:', user.email);
     LoadingScreen.setProgress(20, 'User authenticated...');
 
