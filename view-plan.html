@@ -3,209 +3,440 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <title>Timora — Shared Study Plan</title>
-
-  <!-- Inter Font -->
+  
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
+  <script src="https://cdn.tailwindcss.com"></script>
+  
   <style>
-    :root {
-      --primary: #7452ff;
-      --primary2: #c96bff;
-      --bg1: #f0e9ff;
-      --bg2: #e1f4ff;
-      --text-dark: #0f172a;
-      --text-light: #64748b;
-      --glass: rgba(255, 255, 255, 0.55);
-      --glass-border: rgba(255, 255, 255, 0.28);
+    body { font-family: 'Inter', sans-serif; }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
-
-    body {
-      margin: 0;
-      font-family: 'Inter', sans-serif;
-      background: linear-gradient(145deg, var(--bg1), var(--bg2));
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+    
+    .fade-in {
+      animation: fadeIn 0.5s ease-out;
     }
-
-    /* HEADER */
-    header {
-      width: 100%;
-      padding: 26px 0;
-      background: rgba(255, 255, 255, 0.55);
-      backdrop-filter: blur(18px);
-      border-bottom: 1px solid var(--glass-border);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-      text-align: center;
+    
+    .slot-card {
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-
-    header h1 {
-      font-size: 28px;
-      font-weight: 800;
-      color: var(--primary);
-      letter-spacing: -0.5px;
-    }
-
-    /* INFO CARD (User + Date) */
-    #infoCard {
-      margin-top: 30px;
-      padding: 22px 26px;
-      width: 92%;
-      max-width: 900px;
-      background: var(--glass);
-      backdrop-filter: blur(20px);
-      border-radius: 18px;
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 20px 50px rgba(0,0,0,0.12);
-      display: none;
-    }
-
-    #infoCard h2 {
-      font-size: 22px;
-      margin: 0 0 10px 0;
-      color: var(--text-dark);
-      font-weight: 700;
-    }
-
-    #infoCard p {
-      margin: 4px 0;
-      color: var(--text-light);
-      font-size: 15px;
-    }
-
-    /* PDF VIEWER */
-    #viewerContainer {
-      margin-top: 28px;
-      margin-bottom: 50px;
-      width: 92%;
-      max-width: 900px;
-      padding: 18px;
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 20px;
-      backdrop-filter: blur(20px);
-      box-shadow: 0 22px 60px rgba(0,0,0,0.15);
-      display: none;
-    }
-
-    #viewer {
-      width: 100%;
-      height: 88vh;
-      border: none;
-      border-radius: 14px;
-      background: white;
-    }
-
-    /* LOADING */
-    #loading {
-      margin-top: 120px;
-      font-size: 20px;
-      font-weight: 500;
-      padding: 20px 30px;
-      background: var(--glass);
-      border-radius: 14px;
-      border: 1px solid var(--glass-border);
-      color: var(--text-light);
-      backdrop-filter: blur(18px);
-      box-shadow: 0 15px 40px rgba(0,0,0,0.1);
-    }
-
-    /* FOOTER */
-    footer {
-      margin: 40px 0 20px;
-      color: var(--text-light);
-      font-size: 14px;
-      text-align: center;
+    
+    .slot-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 
-<body>
+<body class="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-cyan-50">
 
-<header>
-  <h1>Timora — Shared Plan</h1>
-</header>
+  <!-- Header -->
+  <header class="bg-white/80 backdrop-blur-lg border-b border-slate-200 py-4 sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-6 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span class="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          Timora
+        </span>
+      </a>
+      
+      <a href="/" class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-medium hover:scale-105 transition">
+        Create Your Plan
+      </a>
+    </div>
+  </header>
 
-<div id="loading">Fetching shared study plan…</div>
+  <!-- Loading State -->
+  <div id="loadingState" class="max-w-md mx-auto mt-32 text-center fade-in">
+    <div class="relative w-20 h-20 mx-auto mb-6">
+      <div class="absolute inset-0 rounded-full border-4 border-purple-200"></div>
+      <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-600 animate-spin"></div>
+      <div class="absolute inset-0 flex items-center justify-center">
+        <span class="text-2xl">📚</span>
+      </div>
+    </div>
+    <p class="text-slate-600 font-medium">Loading shared study plan...</p>
+    <p class="text-slate-400 text-sm mt-2">Please wait a moment</p>
+  </div>
 
-<!-- USER INFO CARD -->
-<div id="infoCard">
-  <h2 id="ownerName">Plan by — Unknown User</h2>
-  <p id="createdDate">Created on: --</p>
-  <p style="margin-top:8px; font-size:14px;">Shared securely via Timora AI Planner</p>
-</div>
+  <!-- Error State -->
+  <div id="errorState" class="hidden max-w-md mx-auto mt-32 text-center fade-in">
+    <div class="text-7xl mb-6">😕</div>
+    <h2 class="text-2xl font-bold text-slate-800 mb-3">Plan Not Found</h2>
+    <p id="errorMessage" class="text-slate-500 mb-8">This plan may have expired or doesn't exist.</p>
+    <a href="/" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:scale-105 transition shadow-lg">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+      </svg>
+      Create Your Own Plan
+    </a>
+  </div>
 
-<!-- PDF VIEWER -->
-<div id="viewerContainer">
-  <iframe id="viewer"></iframe>
-</div>
+  <!-- Plan Content -->
+  <div id="planContent" class="hidden max-w-5xl mx-auto px-6 py-8 fade-in">
+    
+    <!-- Info Card -->
+    <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 id="planTitle" class="text-2xl font-bold text-slate-800 mb-1">Study Plan</h1>
+          <p id="planMeta" class="text-slate-500">Loading details...</p>
+          <p id="planOwner" class="text-sm text-slate-400 mt-2">Shared by: ---</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="downloadPdfBtn" class="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:scale-105 transition flex items-center gap-2 shadow-md">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Download PDF
+          </button>
+        </div>
+      </div>
+    </div>
 
-<footer>
-  Crafted with ❤️ by Timora • Stay disciplined.
-</footer>
+    <!-- Day Navigation -->
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-lg font-semibold text-slate-700">Plan Schedule</h2>
+      <div class="flex items-center gap-2">
+        <button id="prevDayBtn" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50">
+          ← Prev
+        </button>
+        <span id="dayIndicator" class="px-4 py-1.5 rounded-lg bg-purple-100 text-purple-700 text-sm font-semibold">
+          Day 1 of 1
+        </span>
+        <button id="nextDayBtn" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50">
+          Next →
+        </button>
+      </div>
+    </div>
 
+    <!-- Day Content -->
+    <div id="dayContent" class="grid md:grid-cols-2 gap-4">
+      <!-- Slots will be rendered here -->
+    </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+    <!-- All Days Overview -->
+    <div id="allDaysContainer" class="mt-12 space-y-8">
+      <!-- All days will be rendered here -->
+    </div>
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDsZ2luMQAqmnwk0y6-vJ1gzKkMd1NKFuc",
-    authDomain: "timora-2680a.firebaseapp.com",
-    projectId: "timora-2680a",
-    storageBucket: "timora-2680a.firebasestorage.app",
-    messagingSenderId: "1036436572315",
-    appId: "1:1036436572315:web:58b1ecb4cb84045aaa5e3e"
-  };
+  </div>
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  <!-- Footer -->
+  <footer class="text-center py-12 text-slate-500 text-sm">
+    <p>Shared via <a href="/" class="text-purple-600 hover:underline font-medium">Timora</a></p>
+    <p class="mt-1">Plan smarter, study better. ✨</p>
+  </footer>
 
-  // Get ?id=
-  const id = new URLSearchParams(window.location.search).get("id");
+  <!-- Firebase & Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-  if (!id) {
-    document.getElementById("loading").innerText = "Invalid or missing share link.";
-    throw new Error("Missing ID");
-  }
+    const firebaseConfig = {
+      apiKey: "AIzaSyDsZ2luMQAqmnwk0y6-vJ1gzKkMd1NKFuc",
+      authDomain: "timora-2680a.firebaseapp.com",
+      projectId: "timora-2680a",
+      storageBucket: "timora-2680a.firebasestorage.app",
+      messagingSenderId: "1036436572315",
+      appId: "1:1036436572315:web:58b1ecb4cb84045aaa5e3e"
+    };
 
-  async function loadPDF() {
-    const snap = await getDoc(doc(db, "shared-plans", id));
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    if (!snap.exists()) {
-      document.getElementById("loading").innerText = "This shared plan has expired or does not exist.";
-      return;
+    // Get plan ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const planId = urlParams.get('id');
+
+    // State
+    let planData = null;
+    let currentDayIndex = 0;
+
+    // DOM Elements
+    const loadingState = document.getElementById('loadingState');
+    const errorState = document.getElementById('errorState');
+    const errorMessage = document.getElementById('errorMessage');
+    const planContent = document.getElementById('planContent');
+    const planTitle = document.getElementById('planTitle');
+    const planMeta = document.getElementById('planMeta');
+    const planOwner = document.getElementById('planOwner');
+    const dayIndicator = document.getElementById('dayIndicator');
+    const dayContent = document.getElementById('dayContent');
+    const allDaysContainer = document.getElementById('allDaysContainer');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const prevDayBtn = document.getElementById('prevDayBtn');
+    const nextDayBtn = document.getElementById('nextDayBtn');
+
+    // Utility functions
+    function showError(message) {
+      loadingState.classList.add('hidden');
+      planContent.classList.add('hidden');
+      errorState.classList.remove('hidden');
+      errorMessage.textContent = message;
     }
 
-    const data = snap.data();
+    function showPlan() {
+      loadingState.classList.add('hidden');
+      errorState.classList.add('hidden');
+      planContent.classList.remove('hidden');
+    }
 
-    /* --- UPDATE USER INFO CARD --- */
-    document.getElementById("ownerName").innerText =
-      "Plan by — " + (data.userName || "Anonymous User");
+    function formatDate(dateString) {
+      try {
+        return new Date(dateString).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      } catch {
+        return 'Unknown date';
+      }
+    }
 
-    const date = new Date(data.createdAt).toLocaleString();
-    document.getElementById("createdDate").innerText = "Created on: " + date;
+    // Gradient colors for slots
+    const gradients = [
+      'from-purple-500 to-pink-500',
+      'from-blue-500 to-cyan-500',
+      'from-green-500 to-emerald-500',
+      'from-orange-500 to-red-500',
+      'from-indigo-500 to-purple-500',
+      'from-teal-500 to-green-500'
+    ];
 
-    document.getElementById("infoCard").style.display = "block";
+    function getSlotHTML(slot, index) {
+      const isBreak = (slot.subject || '').toLowerCase().includes('break') ||
+                      (slot.topic || '').toLowerCase().includes('break');
+      
+      const gradient = isBreak ? 'from-yellow-400 to-orange-400' : gradients[index % gradients.length];
+      
+      return `
+        <div class="slot-card p-5 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium bg-white/20 px-3 py-1 rounded-full">
+              ${escapeHtml(slot.time || '00:00')}
+            </span>
+            ${isBreak ? '<span class="text-lg">🧘</span>' : '<span class="text-lg">📚</span>'}
+          </div>
+          <h3 class="text-xl font-bold mb-1">${escapeHtml(slot.subject || 'Study')}</h3>
+          <p class="text-sm opacity-90">${escapeHtml(slot.topic || '')}</p>
+        </div>
+      `;
+    }
 
-    /* --- BASE64 → PDF --- */
-    const base64 = (data.pdfData || "").split(",")[1];
-    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
-    const viewer = document.getElementById("viewer");
-    viewer.src = url;
+    function renderCurrentDay() {
+      if (!planData?.plan?.days || planData.plan.days.length === 0) {
+        dayContent.innerHTML = '<p class="text-slate-500 col-span-2 text-center py-8">No schedule data available.</p>';
+        return;
+      }
 
-    document.getElementById("viewerContainer").style.display = "block";
-    document.getElementById("loading").remove();
-  }
+      const days = planData.plan.days;
+      const day = days[currentDayIndex];
+      
+      if (!day) {
+        dayContent.innerHTML = '<p class="text-slate-500 col-span-2 text-center py-8">Day not found.</p>';
+        return;
+      }
 
-  loadPDF();
-</script>
+      // Update day indicator
+      dayIndicator.textContent = `Day ${currentDayIndex + 1} of ${days.length}`;
+      
+      // Update navigation buttons
+      prevDayBtn.disabled = currentDayIndex === 0;
+      nextDayBtn.disabled = currentDayIndex === days.length - 1;
+
+      // Render slots
+      const slots = day.slots || [];
+      if (slots.length === 0) {
+        dayContent.innerHTML = '<p class="text-slate-500 col-span-2 text-center py-8">No slots for this day.</p>';
+        return;
+      }
+
+      dayContent.innerHTML = slots.map((slot, i) => getSlotHTML(slot, i)).join('');
+    }
+
+    function renderAllDays() {
+      if (!planData?.plan?.days || planData.plan.days.length === 0) {
+        allDaysContainer.innerHTML = '';
+        return;
+      }
+
+      const days = planData.plan.days;
+      
+      allDaysContainer.innerHTML = days.map((day, dayIndex) => {
+        const slots = day.slots || [];
+        
+        return `
+          <div class="bg-white rounded-2xl shadow-lg p-6">
+            <h3 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-white flex items-center justify-center text-sm font-bold">
+                ${dayIndex + 1}
+              </span>
+              Day ${day.day || dayIndex + 1}
+            </h3>
+            <div class="grid md:grid-cols-2 gap-4">
+              ${slots.map((slot, i) => getSlotHTML(slot, i)).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function downloadPDF() {
+      if (!planData?.pdfBase64) {
+        alert('PDF data not available. The plan can only be viewed online.');
+        return;
+      }
+
+      try {
+        // Decode base64 to binary
+        const base64 = planData.pdfBase64;
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Create blob and download
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Timora_Study_Plan_${planData.plan?.meta?.days || 'shared'}_days.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        URL.revokeObjectURL(url);
+        
+      } catch (e) {
+        console.error('Download error:', e);
+        alert('Failed to download PDF. Please try again.');
+      }
+    }
+
+    async function loadPlan() {
+      console.log('Loading plan with ID:', planId);
+
+      if (!planId) {
+        showError('Invalid or missing share link. Please check the URL.');
+        return;
+      }
+
+      try {
+        const docRef = doc(db, 'shared-plans', planId);
+        const docSnap = await getDoc(docRef);
+
+        console.log('Document exists:', docSnap.exists());
+
+        if (!docSnap.exists()) {
+          showError('This shared plan was not found. It may have been deleted.');
+          return;
+        }
+
+        planData = docSnap.data();
+        console.log('Plan data loaded:', planData);
+
+        // Check expiration
+        if (planData.expiresAt) {
+          const expiryDate = new Date(planData.expiresAt);
+          if (expiryDate < new Date()) {
+            showError('This shared plan has expired. Plans are available for 30 days.');
+            return;
+          }
+        }
+
+        // Validate plan structure
+        if (!planData.plan || !planData.plan.days || !Array.isArray(planData.plan.days)) {
+          showError('This plan appears to be corrupted or incomplete.');
+          return;
+        }
+
+        // Update UI with plan info
+        const meta = planData.plan.meta || {};
+        const subjects = meta.subjects?.join(', ') || 'Study';
+        const daysCount = planData.plan.days.length;
+        const hoursPerDay = meta.hoursPerDay || '?';
+
+        planTitle.textContent = `${daysCount}-Day ${subjects} Plan`;
+        planMeta.textContent = `${hoursPerDay} hours/day • Created ${formatDate(planData.createdAt)}`;
+        planOwner.textContent = `Shared by: ${planData.userName || 'Timora User'}`;
+
+        // Check if PDF is available
+        if (planData.pdfBase64) {
+          console.log('PDF data available, length:', planData.pdfBase64.length);
+          downloadPdfBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          downloadPdfBtn.disabled = false;
+        } else {
+          console.log('No PDF data - download disabled');
+          downloadPdfBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          downloadPdfBtn.disabled = true;
+          downloadPdfBtn.title = 'PDF not available for this plan';
+        }
+
+        // Render the plan
+        renderCurrentDay();
+        renderAllDays();
+        
+        // Show the plan content
+        showPlan();
+
+        console.log('Plan loaded successfully!');
+
+      } catch (e) {
+        console.error('Load error:', e);
+        showError('Failed to load the plan. Please check your internet connection and try again.');
+      }
+    }
+
+    // Event Listeners
+    downloadPdfBtn.addEventListener('click', downloadPDF);
+    
+    prevDayBtn.addEventListener('click', () => {
+      if (currentDayIndex > 0) {
+        currentDayIndex--;
+        renderCurrentDay();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    nextDayBtn.addEventListener('click', () => {
+      const totalDays = planData?.plan?.days?.length || 0;
+      if (currentDayIndex < totalDays - 1) {
+        currentDayIndex++;
+        renderCurrentDay();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') {
+        prevDayBtn.click();
+      } else if (e.key === 'ArrowRight') {
+        nextDayBtn.click();
+      }
+    });
+
+    // Load the plan on page load
+    loadPlan();
+  </script>
 
 </body>
 </html>
