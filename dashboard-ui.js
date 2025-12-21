@@ -2343,24 +2343,25 @@ async function sharePlannerPDF() {
   }
 }
 
-// Generate PDF as Base64 - FIXED VERSION
 async function generatePDFBase64() {
+  console.log('=== generatePDFBase64 START ===');
+  console.log('generatedPlan:', generatedPlan);
+  
   // Validate generatedPlan exists
   if (!generatedPlan) {
-    console.error('generatePDFBase64: No plan generated');
+    console.error('No plan generated');
     return null;
   }
 
   // Validate plan has days
   if (!generatedPlan.days || !Array.isArray(generatedPlan.days) || generatedPlan.days.length === 0) {
-    console.error('generatePDFBase64: Plan has no days');
+    console.error('Plan has no days');
     return null;
   }
 
   const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
   if (!jsPDF) {
-    console.error('generatePDFBase64: jsPDF not loaded');
-    toast('PDF library not loaded. Please refresh the page.');
+    console.error('jsPDF not loaded');
     return null;
   }
 
@@ -2370,21 +2371,54 @@ async function generatePDFBase64() {
     const pageHeight = pdf.internal.pageSize.getHeight();
     let y = 60;
 
-    // ===== SAFELY EXTRACT META INFO =====
-    const meta = generatedPlan.meta || {};
-    const subjects = Array.isArray(meta.subjects) ? meta.subjects : [];
-    const subjectsText = subjects.length > 0 ? subjects.join(', ') : 'Study Plan';
+    // ===== SAFE META EXTRACTION =====
+    // If meta doesn't exist, create it from the plan data
+    let subjects = [];
+    let hoursPerDay = 0;
+    let goal = '';
+    
+    if (generatedPlan.meta && typeof generatedPlan.meta === 'object') {
+      // Meta exists, use it
+      if (Array.isArray(generatedPlan.meta.subjects)) {
+        subjects = generatedPlan.meta.subjects;
+      }
+      hoursPerDay = generatedPlan.meta.hoursPerDay || generatedPlan.meta.hours || 0;
+      goal = generatedPlan.meta.goal || '';
+    }
+    
+    // If subjects is still empty, extract from plan days
+    if (subjects.length === 0) {
+      const subjectSet = new Set();
+      generatedPlan.days.forEach(day => {
+        if (day && Array.isArray(day.slots)) {
+          day.slots.forEach(slot => {
+            if (slot && slot.subject) {
+              const subj = String(slot.subject).trim();
+              if (subj.toLowerCase() !== 'break' && 
+                  !subj.toLowerCase().includes('lunch') && 
+                  !subj.toLowerCase().includes('rest')) {
+                subjectSet.add(subj);
+              }
+            }
+          });
+        }
+      });
+      subjects = Array.from(subjectSet);
+    }
+    
+    // Final fallback
+    if (subjects.length === 0) {
+      subjects = ['Study'];
+    }
+    
+    const subjectsText = subjects.join(', ');
     const daysCount = generatedPlan.days.length;
-    const hoursPerDay = meta.hoursPerDay || meta.hours || '?';
-    const goal = meta.goal || '';
-
-    console.log('PDF generation starting:', { subjectsText, daysCount, hoursPerDay });
+    
+    console.log('PDF Meta (extracted):', { subjects, subjectsText, daysCount, hoursPerDay });
 
     // ===== HEADER =====
     pdf.setFillColor(114, 89, 236);
     pdf.rect(0, 0, pageWidth, 100, 'F');
-    
-    // Gradient overlay
     pdf.setFillColor(198, 102, 247);
     pdf.rect(0, 60, pageWidth, 40, 'F');
 
@@ -2394,160 +2428,130 @@ async function generatePDFBase64() {
     pdf.setFontSize(28);
     pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
 
-    // Subtitle - with safe string building
+    // Subtitle - SAFE VERSION
     pdf.setFontSize(12);
     pdf.setFont("helvetica", "normal");
-    const date = new Date().toLocaleDateString('en-US', { 
+    const dateStr = new Date().toLocaleDateString('en-US', { 
       year: 'numeric', month: 'long', day: 'numeric' 
     });
     
-    let subtitleParts = [`Generated on ${date}`];
-    if (daysCount > 0) subtitleParts.push(`${daysCount} days`);
-    if (hoursPerDay !== '?') subtitleParts.push(`${hoursPerDay}h/day`);
-    if (subjectsText && subjectsText !== 'Study Plan') subtitleParts.push(subjectsText);
+    let subtitleParts = [];
+    subtitleParts.push('Generated on ' + dateStr);
+    subtitleParts.push(daysCount + ' days');
+    if (hoursPerDay > 0) {
+      subtitleParts.push(hoursPerDay + 'h/day');
+    }
+    subtitleParts.push(subjectsText);
     
     const subtitleText = subtitleParts.join(' | ');
     pdf.text(subtitleText, pageWidth / 2, 75, { align: 'center' });
 
     y = 130;
 
-    // ===== CONTENT - DAYS =====
-    generatedPlan.days.forEach((day, dayIdx) => {
-      // Skip invalid days
-      if (!day) return;
-      
-      // Check for page break
+    // ===== CONTENT =====
+    for (let dayIdx = 0; dayIdx < generatedPlan.days.length; dayIdx++) {
+      const day = generatedPlan.days[dayIdx];
+      if (!day) continue;
+
       if (y > pageHeight - 120) {
         pdf.addPage();
         y = 40;
       }
 
-      // Day header background
+      // Day header
       pdf.setFillColor(245, 247, 250);
       pdf.roundedRect(30, y - 5, pageWidth - 60, 35, 5, 5, 'F');
-      
-      // Day number circle
       pdf.setFillColor(114, 89, 236);
       pdf.circle(50, y + 12, 15, 'F');
-      
-      // Day number text
       pdf.setTextColor(255, 255, 255);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(14);
       pdf.text(String(dayIdx + 1), 50, y + 17, { align: 'center' });
-      
-      // Day label
       pdf.setTextColor(30, 41, 59);
       pdf.setFontSize(16);
-      const dayNumber = day.day || dayIdx + 1;
-      pdf.text(`Day ${dayNumber}`, 75, y + 17);
+      pdf.text('Day ' + (day.day || dayIdx + 1), 75, y + 17);
 
       y += 50;
 
-      // ===== SLOTS =====
+      // Slots
       const slots = Array.isArray(day.slots) ? day.slots : [];
-      
-      slots.forEach((slot, slotIdx) => {
-        // Skip invalid slots
-        if (!slot) return;
-        
-        // Check for page break
+      for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
+        const slot = slots[slotIdx];
+        if (!slot) continue;
+
         if (y > pageHeight - 80) {
           pdf.addPage();
           y = 40;
         }
 
-        const subjectName = String(slot.subject || 'Study');
+        const subjectName = slot.subject ? String(slot.subject) : 'Study';
+        const timeStr = slot.time ? String(slot.time) : '00:00';
+        const topicStr = slot.topic ? String(slot.topic) : '';
+        
         const isBreak = subjectName.toLowerCase().includes('break') ||
                        subjectName.toLowerCase().includes('lunch') ||
                        subjectName.toLowerCase().includes('rest');
-        
+
         // Slot background
         pdf.setFillColor(250, 250, 250);
         pdf.roundedRect(45, y - 3, pageWidth - 90, 50, 4, 4, 'F');
 
-        // Color bar on left
+        // Color bar
         if (isBreak) {
-          pdf.setFillColor(251, 191, 36); // Yellow for breaks
+          pdf.setFillColor(251, 191, 36);
         } else {
-          const colors = [
-            [139, 92, 246],  // Purple
-            [59, 130, 246],  // Blue
-            [16, 185, 129],  // Green
-            [239, 68, 68],   // Red
-            [99, 102, 241],  // Indigo
-            [20, 184, 166]   // Teal
-          ];
-          const colorIndex = slotIdx % colors.length;
-          const color = colors[colorIndex];
-          pdf.setFillColor(color[0], color[1], color[2]);
+          const colors = [[139, 92, 246], [59, 130, 246], [16, 185, 129], [239, 68, 68], [99, 102, 241], [20, 184, 166]];
+          const c = colors[slotIdx % colors.length];
+          pdf.setFillColor(c[0], c[1], c[2]);
         }
         pdf.roundedRect(45, y - 3, 6, 50, 2, 2, 'F');
 
-        // Time and Subject
+        // Text
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(11);
         pdf.setTextColor(30, 41, 59);
-        
-        const timeStr = String(slot.time || '00:00 - 01:00');
-        const timeSubject = `${timeStr} • ${subjectName}`;
-        pdf.text(timeSubject, 60, y + 15);
+        pdf.text(timeStr + ' • ' + subjectName, 60, y + 15);
 
-        // Topic
-        const topicStr = String(slot.topic || '');
         if (topicStr) {
           pdf.setFont("helvetica", "normal");
           pdf.setFontSize(9);
           pdf.setTextColor(100, 116, 139);
-          
-          // Truncate long topics
-          const maxLength = 70;
-          const displayTopic = topicStr.length > maxLength 
-            ? topicStr.substring(0, maxLength) + '...'
-            : topicStr;
+          const displayTopic = topicStr.length > 70 ? topicStr.substring(0, 70) + '...' : topicStr;
           pdf.text(displayTopic, 60, y + 32);
         }
 
         y += 58;
-      });
+      }
 
-      y += 15; // Space between days
-    });
+      y += 15;
+    }
 
-    // ===== FOOTER ON ALL PAGES =====
+    // ===== FOOTER =====
     const totalPages = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       pdf.setPage(i);
-      
-      // Footer line
       pdf.setDrawColor(226, 232, 240);
       pdf.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
-      
-      // Footer text
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
       pdf.setTextColor(148, 163, 184);
-      pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+      pdf.text('Page ' + i + ' of ' + totalPages, pageWidth / 2, pageHeight - 20, { align: 'center' });
       pdf.text('timora.app', 35, pageHeight - 20);
       pdf.text('Generated by Timora', pageWidth - 35, pageHeight - 20, { align: 'right' });
     }
 
-    // ===== OUTPUT AS PURE BASE64 =====
+    // Output
     const base64String = pdf.output('base64');
-    
-    console.log('PDF generated successfully, length:', base64String.length);
-    
+    console.log('✅ PDF generated, length:', base64String.length);
     return base64String;
-    
+
   } catch (e) {
     console.error('PDF generation error:', e);
-    console.error('Plan data:', JSON.stringify(generatedPlan, null, 2).substring(0, 500));
+    console.error('Error at:', e.stack);
     return null;
   }
 }
-
-
-
+  
 function initPlanner() {
   const genBtn = $('#genAIPlan');
   const result = $('#plannerResult');
@@ -4402,3 +4406,4 @@ console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timo
 initializeDashboard();
 
 }); // End DOMContentLoaded
+
