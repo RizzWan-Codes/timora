@@ -2400,18 +2400,16 @@ async function sharePlannerPDF() {
 }
 
 async function generatePDFBase64() {
-  console.log('=== generatePDFBase64 START ===');
-  
+  console.log('=== generatePDFBase64 (ULTRA DOPAMINE) START ===');
+
   if (!generatedPlan || !generatedPlan.days || generatedPlan.days.length === 0) {
     console.error('ERROR: Invalid plan data');
     toast('Please generate a plan first');
     return null;
   }
 
-  // Get constructor safely
   const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
   if (!JsPDF) {
-    console.error('ERROR: jsPDF not loaded');
     toast('PDF library missing. Refreshing...');
     setTimeout(() => window.location.reload(), 2000);
     return null;
@@ -2419,117 +2417,203 @@ async function generatePDFBase64() {
 
   try {
     const pdf = new JsPDF('p', 'pt', 'a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    let y = 60;
-
-    // --- PDF GENERATION LOGIC (Simplified for reliability) ---
+    const w = pdf.internal.pageSize.getWidth();
+    const h = pdf.internal.pageSize.getHeight();
     
-    // Header
-    pdf.setFillColor(114, 89, 236);
-    pdf.rect(0, 0, pageWidth, 100, 'F');
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(24);
-    pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
+    // --- THE ELECTRIC PALETTE ---
+    const p = {
+      white: [255, 255, 255],
+      offWhite: [248, 250, 255],
+      dark: [15, 23, 42],       // Slate 900
+      text: [51, 65, 85],       // Slate 700
+      sub: [100, 116, 139],     // Slate 500
+      primary: [124, 58, 237],  // Violet 600
+      accent: [236, 72, 153],   // Pink 500
+      electric: [6, 182, 212],  // Cyan 500
+      break: [251, 191, 36],    // Amber 400
+      success: [16, 185, 129],  // Emerald 500
+      grid: [226, 232, 240]     // Slate 200
+    };
 
-    // Subtitle
-    pdf.setFontSize(12);
+    // --- ASSETS & HELPERS ---
+    const quotes = [
+      "Level up your mind.", "Discipline is freedom.", 
+      "Focus. Grind. Execute.", "Your potential is infinite.", 
+      "One task at a time.", "Future you will thank you."
+    ];
+
+    const drawShadow = (x, y, wid, hei, r) => {
+      pdf.setFillColor(p.primary[0], p.primary[1], p.primary[2], 0.08); // Transparent purple shadow
+      pdf.roundedRect(x + 4, y + 6, wid, hei, r, r, 'F');
+    };
+
+    // --- RENDER LOOP ---
     const meta = generatedPlan.meta || {};
-    const subjects = Array.isArray(meta.subjects) ? meta.subjects.join(', ') : 'Study';
-    pdf.text(`Generated on ${new Date().toLocaleDateString()} | ${subjects}`, pageWidth / 2, 75, { align: 'center' });
+    const subjects = Array.isArray(meta.subjects) ? meta.subjects.join(' • ') : 'Mission Log';
+    const hours = meta.hoursPerDay || 3;
+    let y = 0;
 
-    y = 130;
-
-    // Content
-    const days = generatedPlan.days;
-    for (let i = 0; i < days.length; i++) {
-      const day = days[i];
+    for (let i = 0; i < generatedPlan.days.length; i++) {
+      const day = generatedPlan.days[i];
       if (!day) continue;
 
-      if (y > pageHeight - 100) { pdf.addPage(); y = 40; }
+      // New Page for Every Day (Maximizes layout beauty)
+      if (i > 0) pdf.addPage();
+      
+      // 1. PAGE BACKGROUND (Subtle Grid Pattern)
+      pdf.setFillColor(...p.offWhite);
+      pdf.rect(0, 0, w, h, 'F');
+      
+      // 2. HERO HEADER (The "Dopamine Hit")
+      // Giant abstract shapes
+      pdf.setFillColor(...p.primary);
+      pdf.circle(0, 0, 180, 'F'); // Top left
+      pdf.setFillColor(...p.accent);
+      pdf.circle(w, 40, 120, 'F'); // Top right
+      
+      // Overlay gradient mesh simulation
+      pdf.setFillColor(255, 255, 255, 0.1);
+      pdf.rect(0, 0, w, 150, 'F');
 
-      // Day Header
-      pdf.setFillColor(240, 240, 240);
-      pdf.rect(30, y - 5, pageWidth - 60, 30, 'F');
-      pdf.setTextColor(0, 0, 0);
+      // Title Card
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(48);
+      pdf.text(`LEVEL ${day.day || i + 1}`, 40, 70); // "LEVEL" instead of Day
+      
       pdf.setFontSize(14);
-      pdf.text(`Day ${day.day || i + 1}`, 40, y + 15);
-      y += 45;
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`XP POTENTIAL: ${hours * 100} PTS`, 45, 95);
 
-      // Slots
+      // Meta badge
+      drawShadow(w - 220, 45, 180, 30, 15);
+      pdf.setFillColor(255, 255, 255, 0.9);
+      pdf.roundedRect(w - 220, 45, 180, 30, 15, 15, 'F');
+      pdf.setTextColor(...p.primary);
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(new Date().toLocaleDateString().toUpperCase(), w - 130, 64, { align: 'center' });
+
+      y = 160;
+
+      // 3. SLOTS (The "Quests")
       const slots = Array.isArray(day.slots) ? day.slots : [];
+      
       for (let j = 0; j < slots.length; j++) {
         const slot = slots[j];
         if (!slot) continue;
 
-        if (y > pageHeight - 60) { pdf.addPage(); y = 40; }
-
-        pdf.setFontSize(11);
-        const time = slot.time || '';
-        const subject = slot.subject || '';
-        const topic = slot.topic || '';
-        
-        pdf.setTextColor(80, 80, 80);
-        pdf.text(`${time} • ${subject}`, 40, y);
-        
-        if (topic) {
-          pdf.setTextColor(120, 120, 120);
-          pdf.setFontSize(10);
-          // Simple truncation to avoid complex wrapping issues
-          const cleanTopic = topic.length > 80 ? topic.substring(0, 80) + '...' : topic;
-          pdf.text(cleanTopic, 40, y + 15);
-          y += 20;
+        if (y > h - 100) {
+          pdf.addPage();
+          pdf.setFillColor(...p.offWhite);
+          pdf.rect(0, 0, w, h, 'F');
+          y = 50;
         }
-        y += 25;
+
+        const isBreak = (slot.subject || '').toLowerCase().includes('break');
+        const cardH = isBreak ? 50 : 85;
+
+        // Card Shadow
+        drawShadow(40, y, w - 80, cardH, 12);
+
+        // Main Card Body
+        pdf.setFillColor(...p.white);
+        if (isBreak) pdf.setFillColor(255, 252, 235); // Slight yellow tint for breaks
+        pdf.roundedRect(40, y, w - 80, cardH, 12, 12, 'F');
+
+        if (isBreak) {
+          // --- BREAK CARD ---
+          // Icon Circle
+          pdf.setFillColor(...p.break);
+          pdf.circle(70, y + 25, 15, 'F');
+          pdf.setTextColor(...p.white);
+          pdf.setFontSize(14);
+          pdf.text("R", 70, y + 30, { align: 'center' }); // R for Rest
+
+          // Text
+          pdf.setTextColor(...p.text);
+          pdf.setFontSize(12);
+          pdf.setFont("helvetica", "bold");
+          pdf.text("RECHARGE ZONE", 100, y + 30);
+          
+          pdf.setFontSize(10);
+          pdf.setFont("helvetica", "normal");
+          pdf.setTextColor(...p.sub);
+          pdf.text(slot.time || '', w - 60, y + 30, { align: 'right' });
+
+        } else {
+          // --- MISSION CARD (Study) ---
+          
+          // 1. The "Checkbox" (Visual Dopamine Target)
+          pdf.setDrawColor(...p.grid);
+          pdf.setLineWidth(2);
+          pdf.circle(70, y + 42, 12, 'S'); // Empty circle to check off
+          
+          // 2. Time Pill
+          pdf.setFillColor(p.primary[0], p.primary[1], p.primary[2], 0.1); // Light purple bg
+          pdf.roundedRect(100, y + 15, 80, 20, 6, 6, 'F');
+          pdf.setTextColor(...p.primary);
+          pdf.setFontSize(9);
+          pdf.setFont("helvetica", "bold");
+          pdf.text(String(slot.time || '00:00'), 140, y + 28, { align: 'center' });
+
+          // 3. Subject Tag
+          const subject = (slot.subject || 'Study').toUpperCase();
+          pdf.setTextColor(...p.sub);
+          pdf.setFontSize(9);
+          pdf.text(subject, 195, y + 28);
+
+          // 4. Topic (The Quest)
+          pdf.setTextColor(...p.dark);
+          pdf.setFontSize(13);
+          pdf.setFont("helvetica", "bold");
+          
+          const topic = String(slot.topic || 'Focus Session');
+          const cleanTopic = topic.length > 65 ? topic.substring(0, 65) + '...' : topic;
+          pdf.text(cleanTopic, 100, y + 55);
+
+          // 5. XP Reward Label (Visual flair)
+          pdf.setTextColor(...p.success);
+          pdf.setFontSize(8);
+          pdf.text("+100 XP", w - 60, y + 28, { align: 'right' });
+        }
+
+        y += cardH + 18;
       }
-      y += 20;
+
+      // 4. FOOTER (Motivational)
+      const quote = quotes[i % quotes.length];
+      pdf.setTextColor(...p.sub);
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "italic");
+      pdf.text(`"${quote}"`, w / 2, h - 30, { align: 'center' });
+      
+      pdf.setFontSize(8);
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(200, 200, 200);
+      pdf.text("TIMORA.APP // MISSION LOG", w / 2, h - 15, { align: 'center' });
     }
 
-    // --- ROBUST OUTPUT STRATEGY ---
-    
-    console.log('Attempting output generation...');
-    let base64 = null;
-
-    // Method 1: standard 'base64'
+    // --- ROBUST OUTPUT ---
     try {
-      base64 = pdf.output('base64');
-      if (base64 && base64.length > 100) {
-        console.log('✅ Method 1 (base64) worked');
-        return base64;
-      }
-    } catch (e) { console.warn('Method 1 failed:', e); }
-
-    // Method 2: 'datauristring' and strip prefix
-    try {
-      const dataUri = pdf.output('datauristring');
-      if (dataUri && dataUri.includes('base64,')) {
-        base64 = dataUri.split('base64,')[1];
-        console.log('✅ Method 2 (datauristring) worked');
-        return base64;
-      }
-    } catch (e) { console.warn('Method 2 failed:', e); }
-
-    // Method 3: ArrayBuffer to Base64 (Manual)
-    try {
+      // Method 1: standard
+      const b64 = pdf.output('base64');
+      if (b64 && b64.length > 100) return b64;
+      
+      // Method 2: fallback
       const buffer = pdf.output('arraybuffer');
-      if (buffer) {
-        let binary = '';
-        const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        base64 = window.btoa(binary);
-        console.log('✅ Method 3 (arraybuffer) worked');
-        return base64;
-      }
-    } catch (e) { console.warn('Method 3 failed:', e); }
-
-    throw new Error('All PDF generation methods failed');
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return window.btoa(binary);
+    } catch (e) {
+      console.warn('PDF output fallback needed', e);
+      return null;
+    }
 
   } catch (e) {
     console.error('❌ FATAL PDF ERROR:', e);
-    toast('Error generating PDF. Please check console.');
+    toast('Error generating PDF. Check console.');
     return null;
   }
 }
@@ -4388,6 +4472,7 @@ console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timo
 initializeDashboard();
 
 }); // End DOMContentLoaded
+
 
 
 
