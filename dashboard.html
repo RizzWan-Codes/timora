@@ -6,12 +6,16 @@
   <title>Timora — Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+ <!-- jsPDF - Fixed Version -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-  // Make jsPDF globally available after it loads
-  window.addEventListener('load', () => {
+  // Wait for jsPDF to load and set it up correctly
+  window.addEventListener('DOMContentLoaded', () => {
     if (window.jspdf && window.jspdf.jsPDF) {
       window.jsPDF = window.jspdf.jsPDF;
+      console.log('✅ jsPDF loaded successfully');
+    } else {
+      console.error('❌ jsPDF failed to load');
     }
   });
 </script>
@@ -1711,3 +1715,4 @@
 
 </body>
 </html>
+
