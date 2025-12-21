@@ -2402,302 +2402,134 @@ async function sharePlannerPDF() {
 async function generatePDFBase64() {
   console.log('=== generatePDFBase64 START ===');
   
-  // Step 1: Check if plan exists
-  if (!generatedPlan) {
-    console.error('ERROR: generatedPlan is null or undefined');
+  if (!generatedPlan || !generatedPlan.days || generatedPlan.days.length === 0) {
+    console.error('ERROR: Invalid plan data');
+    toast('Please generate a plan first');
     return null;
   }
-  
-  console.log('generatedPlan exists:', true);
-  console.log('generatedPlan keys:', Object.keys(generatedPlan));
-  
-  // Step 2: Check if days exists and is array
-  if (!generatedPlan.days) {
-    console.error('ERROR: generatedPlan.days is null or undefined');
-    return null;
-  }
-  
-  if (!Array.isArray(generatedPlan.days)) {
-    console.error('ERROR: generatedPlan.days is not an array');
-    return null;
-  }
-  
-  if (generatedPlan.days.length === 0) {
-    console.error('ERROR: generatedPlan.days is empty');
-    return null;
-  }
-  
-  console.log('Days count:', generatedPlan.days.length);
-  
-  // Step 3: Check jsPDF
-  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
-  if (!jsPDF) {
+
+  // Get constructor safely
+  const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (!JsPDF) {
     console.error('ERROR: jsPDF not loaded');
+    toast('PDF library missing. Refreshing...');
+    setTimeout(() => window.location.reload(), 2000);
     return null;
   }
-  
-  console.log('jsPDF loaded:', true);
 
   try {
-    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pdf = new JsPDF('p', 'pt', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     let y = 60;
 
-    console.log('PDF created, page size:', pageWidth, 'x', pageHeight);
-
-    // ===== STEP 4: EXTRACT SUBJECTS SAFELY =====
-    let subjectsArray = [];
+    // --- PDF GENERATION LOGIC (Simplified for reliability) ---
     
-    // Try to get from meta first
-    if (generatedPlan.meta !== null && 
-        generatedPlan.meta !== undefined && 
-        typeof generatedPlan.meta === 'object') {
-      
-      console.log('Meta exists:', generatedPlan.meta);
-      
-      if (generatedPlan.meta.subjects !== null && 
-          generatedPlan.meta.subjects !== undefined) {
-        
-        if (Array.isArray(generatedPlan.meta.subjects)) {
-          subjectsArray = generatedPlan.meta.subjects;
-          console.log('Got subjects from meta:', subjectsArray);
-        } else if (typeof generatedPlan.meta.subjects === 'string') {
-          subjectsArray = [generatedPlan.meta.subjects];
-          console.log('Converted string subject to array:', subjectsArray);
-        }
-      }
-    } else {
-      console.log('Meta is null/undefined, extracting from days...');
-    }
-    
-    // If still empty, extract from days
-    if (subjectsArray.length === 0) {
-      console.log('Extracting subjects from days...');
-      const subjectSet = new Set();
-      
-      for (let i = 0; i < generatedPlan.days.length; i++) {
-        const day = generatedPlan.days[i];
-        if (day === null || day === undefined) continue;
-        
-        if (day.slots !== null && day.slots !== undefined && Array.isArray(day.slots)) {
-          for (let j = 0; j < day.slots.length; j++) {
-            const slot = day.slots[j];
-            if (slot === null || slot === undefined) continue;
-            
-            if (slot.subject !== null && slot.subject !== undefined) {
-              const subj = String(slot.subject).trim();
-              const subjLower = subj.toLowerCase();
-              
-              if (subjLower !== 'break' && 
-                  subjLower.indexOf('lunch') === -1 && 
-                  subjLower.indexOf('rest') === -1) {
-                subjectSet.add(subj);
-              }
-            }
-          }
-        }
-      }
-      
-      subjectsArray = Array.from(subjectSet);
-      console.log('Extracted subjects:', subjectsArray);
-    }
-    
-    // Final fallback
-    if (subjectsArray.length === 0) {
-      subjectsArray = ['Study'];
-      console.log('Using fallback subjects:', subjectsArray);
-    }
-    
-    const subjectsText = subjectsArray.join(', ');
-    const daysCount = generatedPlan.days.length;
-    
-    console.log('Final subjects text:', subjectsText);
-    console.log('Days count:', daysCount);
-
-    // ===== HEADER =====
+    // Header
     pdf.setFillColor(114, 89, 236);
     pdf.rect(0, 0, pageWidth, 100, 'F');
-    pdf.setFillColor(198, 102, 247);
-    pdf.rect(0, 60, pageWidth, 40, 'F');
-
-    // Title
     pdf.setTextColor(255, 255, 255);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(28);
+    pdf.setFontSize(24);
     pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
 
     // Subtitle
     pdf.setFontSize(12);
-    pdf.setFont("helvetica", "normal");
-    const dateStr = new Date().toLocaleDateString('en-US', { 
-      year: 'numeric', month: 'long', day: 'numeric' 
-    });
-    
-    const subtitleText = 'Generated on ' + dateStr + ' | ' + daysCount + ' days | ' + subjectsText;
-    console.log('Subtitle:', subtitleText);
-    
-    pdf.text(subtitleText, pageWidth / 2, 75, { align: 'center' });
+    const meta = generatedPlan.meta || {};
+    const subjects = Array.isArray(meta.subjects) ? meta.subjects.join(', ') : 'Study';
+    pdf.text(`Generated on ${new Date().toLocaleDateString()} | ${subjects}`, pageWidth / 2, 75, { align: 'center' });
 
     y = 130;
 
-    // ===== CONTENT =====
-    console.log('Rendering days...');
-    
-    for (let dayIdx = 0; dayIdx < generatedPlan.days.length; dayIdx++) {
-      const day = generatedPlan.days[dayIdx];
-      
-      // Skip null/undefined days
-      if (day === null || day === undefined) {
-        console.warn('Skipping null day at index', dayIdx);
-        continue;
-      }
+    // Content
+    const days = generatedPlan.days;
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      if (!day) continue;
 
-      // Page break check
-      if (y > pageHeight - 120) {
-        pdf.addPage();
-        y = 40;
-      }
+      if (y > pageHeight - 100) { pdf.addPage(); y = 40; }
 
-      // Day header
-      pdf.setFillColor(245, 247, 250);
-      pdf.roundedRect(30, y - 5, pageWidth - 60, 35, 5, 5, 'F');
-      pdf.setFillColor(114, 89, 236);
-      pdf.circle(50, y + 12, 15, 'F');
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFont("helvetica", "bold");
+      // Day Header
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(30, y - 5, pageWidth - 60, 30, 'F');
+      pdf.setTextColor(0, 0, 0);
       pdf.setFontSize(14);
-      pdf.text(String(dayIdx + 1), 50, y + 17, { align: 'center' });
-      pdf.setTextColor(30, 41, 59);
-      pdf.setFontSize(16);
-      
-      const dayNumber = (day.day !== null && day.day !== undefined) ? day.day : (dayIdx + 1);
-      pdf.text('Day ' + dayNumber, 75, y + 17);
+      pdf.text(`Day ${day.day || i + 1}`, 40, y + 15);
+      y += 45;
 
-      y += 50;
+      // Slots
+      const slots = Array.isArray(day.slots) ? day.slots : [];
+      for (let j = 0; j < slots.length; j++) {
+        const slot = slots[j];
+        if (!slot) continue;
 
-      // Get slots safely
-      let slots = [];
-      if (day.slots !== null && day.slots !== undefined && Array.isArray(day.slots)) {
-        slots = day.slots;
-      }
-      
-      console.log('Day', dayIdx + 1, 'has', slots.length, 'slots');
+        if (y > pageHeight - 60) { pdf.addPage(); y = 40; }
 
-      // Render slots
-      for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
-        const slot = slots[slotIdx];
-        
-        // Skip null/undefined slots
-        if (slot === null || slot === undefined) {
-          console.warn('Skipping null slot at day', dayIdx, 'slot', slotIdx);
-          continue;
-        }
-
-        // Page break check
-        if (y > pageHeight - 80) {
-          pdf.addPage();
-          y = 40;
-        }
-
-        // Get slot properties safely
-        const subjectName = (slot.subject !== null && slot.subject !== undefined) 
-          ? String(slot.subject) 
-          : 'Study';
-        
-        const timeStr = (slot.time !== null && slot.time !== undefined) 
-          ? String(slot.time) 
-          : '00:00';
-        
-        const topicStr = (slot.topic !== null && slot.topic !== undefined) 
-          ? String(slot.topic) 
-          : '';
-        
-        const subjLower = subjectName.toLowerCase();
-        const isBreak = subjLower === 'break' || 
-                       subjLower.indexOf('lunch') !== -1 || 
-                       subjLower.indexOf('rest') !== -1;
-
-        // Slot background
-        pdf.setFillColor(250, 250, 250);
-        pdf.roundedRect(45, y - 3, pageWidth - 90, 50, 4, 4, 'F');
-
-        // Color bar
-        if (isBreak) {
-          pdf.setFillColor(251, 191, 36);
-        } else {
-          const colors = [
-            [139, 92, 246],
-            [59, 130, 246],
-            [16, 185, 129],
-            [239, 68, 68],
-            [99, 102, 241],
-            [20, 184, 166]
-          ];
-          const colorIndex = slotIdx % colors.length;
-          const color = colors[colorIndex];
-          pdf.setFillColor(color[0], color[1], color[2]);
-        }
-        pdf.roundedRect(45, y - 3, 6, 50, 2, 2, 'F');
-
-        // Time and Subject
-        pdf.setFont("helvetica", "bold");
         pdf.setFontSize(11);
-        pdf.setTextColor(30, 41, 59);
-        pdf.text(timeStr + ' • ' + subjectName, 60, y + 15);
-
-        // Topic
-        if (topicStr !== '') {
-          pdf.setFont("helvetica", "normal");
-          pdf.setFontSize(9);
-          pdf.setTextColor(100, 116, 139);
-          
-          let displayTopic = topicStr;
-          if (topicStr.length > 70) {
-            displayTopic = topicStr.substring(0, 70) + '...';
-          }
-          pdf.text(displayTopic, 60, y + 32);
+        const time = slot.time || '';
+        const subject = slot.subject || '';
+        const topic = slot.topic || '';
+        
+        pdf.setTextColor(80, 80, 80);
+        pdf.text(`${time} • ${subject}`, 40, y);
+        
+        if (topic) {
+          pdf.setTextColor(120, 120, 120);
+          pdf.setFontSize(10);
+          // Simple truncation to avoid complex wrapping issues
+          const cleanTopic = topic.length > 80 ? topic.substring(0, 80) + '...' : topic;
+          pdf.text(cleanTopic, 40, y + 15);
+          y += 20;
         }
-
-        y += 58;
+        y += 25;
       }
-
-      y += 15;
+      y += 20;
     }
 
-    // ===== FOOTER =====
-    console.log('Adding footer...');
-    const totalPages = pdf.internal.getNumberOfPages();
+    // --- ROBUST OUTPUT STRATEGY ---
     
-    for (let i = 1; i <= totalPages; i++) {
-      pdf.setPage(i);
-      pdf.setDrawColor(226, 232, 240);
-      pdf.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(148, 163, 184);
-      pdf.text('Page ' + i + ' of ' + totalPages, pageWidth / 2, pageHeight - 20, { align: 'center' });
-      pdf.text('timora.app', 35, pageHeight - 20);
-      pdf.text('Generated by Timora', pageWidth - 35, pageHeight - 20, { align: 'right' });
-    }
+    console.log('Attempting output generation...');
+    let base64 = null;
 
-   // ===== OUTPUT =====
-console.log('Generating base64...');
-const base64String = pdf.output('base64');
+    // Method 1: standard 'base64'
+    try {
+      base64 = pdf.output('base64');
+      if (base64 && base64.length > 100) {
+        console.log('✅ Method 1 (base64) worked');
+        return base64;
+      }
+    } catch (e) { console.warn('Method 1 failed:', e); }
 
-if (!base64String) {
-  console.error('pdf.output returned null or empty');
-  return null;
-}
+    // Method 2: 'datauristring' and strip prefix
+    try {
+      const dataUri = pdf.output('datauristring');
+      if (dataUri && dataUri.includes('base64,')) {
+        base64 = dataUri.split('base64,')[1];
+        console.log('✅ Method 2 (datauristring) worked');
+        return base64;
+      }
+    } catch (e) { console.warn('Method 2 failed:', e); }
 
-console.log('✅ PDF generated successfully! Length:', base64String.length);
+    // Method 3: ArrayBuffer to Base64 (Manual)
+    try {
+      const buffer = pdf.output('arraybuffer');
+      if (buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        base64 = window.btoa(binary);
+        console.log('✅ Method 3 (arraybuffer) worked');
+        return base64;
+      }
+    } catch (e) { console.warn('Method 3 failed:', e); }
 
-return base64String;
+    throw new Error('All PDF generation methods failed');
 
   } catch (e) {
-    console.error('❌ PDF generation error:', e);
-    console.error('Error message:', e.message);
-    console.error('Error stack:', e.stack);
+    console.error('❌ FATAL PDF ERROR:', e);
+    toast('Error generating PDF. Please check console.');
     return null;
   }
 }
@@ -4556,6 +4388,7 @@ console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timo
 initializeDashboard();
 
 }); // End DOMContentLoaded
+
 
 
 
