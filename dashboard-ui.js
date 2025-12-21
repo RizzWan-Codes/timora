@@ -2312,6 +2312,10 @@ async function importPlannerToPomodoro() {
   }
 }
 
+// ============================================================================
+// PDF SHARING - COMPLETE FIXED VERSION
+// ============================================================================
+
 async function sharePlannerPDF() {
   if (!generatedPlan) return toast('Generate a plan first!');
 
@@ -2376,8 +2380,6 @@ async function sharePlannerPDF() {
     modal?.classList.remove('flex');
   }
 }
-
-
 
 // Generate PDF as pure Base64 string (without data URL prefix)
 async function generatePDFBase64() {
@@ -2584,6 +2586,153 @@ async function plannerToPDF() {
     console.error('PDF download error:', e);
     toast('PDF download failed: ' + e.message);
   }
+}
+
+function initPlanner() {
+  const genBtn = $('#genAIPlan');
+  const result = $('#plannerResult');
+  
+  // PDF download
+  $('#plannerPdfBtn')?.addEventListener('click', plannerToPDF);
+  
+  // Import to Pomodoro
+  $('#plannerImportBtn')?.addEventListener('click', importPlannerToPomodoro);
+  
+  // Share
+  $('#plannerShareBtn')?.addEventListener('click', sharePlannerPDF);
+  
+  // Day navigation
+  $('#plannerPrevBtn')?.addEventListener('click', () => {
+    if (currentPlanDay > 0) {
+      renderPlanDay(currentPlanDay - 1);
+    } else {
+      toast('Already at first day');
+    }
+  });
+  
+  $('#plannerNextBtn')?.addEventListener('click', () => {
+    if (generatedPlan && currentPlanDay < generatedPlan.days.length - 1) {
+      renderPlanDay(currentPlanDay + 1);
+    } else {
+      toast('Already at last day');
+    }
+  });
+
+  // Share modal controls
+  $('#closeShareModal')?.addEventListener('click', () => {
+    $('#shareModal')?.classList.add('hidden');
+    $('#shareModal')?.classList.remove('flex');
+  });
+  
+  $('#copyLinkBtn')?.addEventListener('click', () => {
+    const input = $('#shareLink');
+    if (input) {
+      input.select();
+      document.execCommand('copy');
+      toast('📋 Link copied!');
+      
+      const btn = $('#copyLinkBtn');
+      if (btn) {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      }
+    }
+  });
+
+  // Social sharing
+  $('#shareWhatsapp')?.addEventListener('click', () => {
+    const link = $('#shareLink')?.value;
+    if (link) {
+      window.open(`https://wa.me/?text=${encodeURIComponent(`Check out my Timora Study Plan: ${link}`)}`, '_blank');
+    }
+  });
+
+  $('#shareEmail')?.addEventListener('click', () => {
+    const link = $('#shareLink')?.value;
+    if (link) {
+      const subject = encodeURIComponent('My Study Plan from Timora');
+      const body = encodeURIComponent(`Hi,\n\nCheck out my study plan:\n${link}\n\nCreated with Timora`);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    }
+  });
+
+  $('#shareTwitter')?.addEventListener('click', () => {
+    const link = $('#shareLink')?.value;
+    if (link) {
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just created my study plan with @Timora 📚✨`)}&url=${encodeURIComponent(link)}`, '_blank');
+    }
+  });
+
+  // Generate plan button
+  genBtn?.addEventListener('click', async () => {
+    const subjects = ($('#plannerSubjects')?.value || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const hours = Number($('#plannerHours')?.value) || 3;
+    const days = Number($('#plannerDays')?.value) || 7;
+    const goal = $('#plannerGoal')?.value?.trim() || 'Study Goal';
+
+    if (subjects.length === 0) {
+      return toast('Add at least one subject');
+    }
+
+    if (result) {
+      result.innerHTML = `
+        <div class="flex items-center gap-3 text-slate-600 p-4">
+          <div class="animate-spin w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
+          <span>Generating your personalized study plan...</span>
+        </div>
+      `;
+    }
+
+    try {
+      // Try AI first, fallback to local
+      const aiPlan = await fetchAIPlan(subjects, hours, days, goal);
+      generatedPlan = aiPlan || generateLocalPlan(subjects, hours, days, goal);
+      
+      if (result) {
+        result.innerHTML = `
+          <div class="p-4 rounded-xl bg-green-50 border border-green-200">
+            <div class="flex items-center gap-2 text-green-700 font-medium mb-1">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+              </svg>
+              Plan Generated!
+            </div>
+            <p class="text-sm text-green-600">
+              ${generatedPlan.days.length}-day plan for ${subjects.join(', ')} • ${hours}h/day
+            </p>
+          </div>
+        `;
+      }
+      
+      renderPlanDay(0);
+      toast('✨ Study plan generated!');
+      
+      if (window.confetti) {
+        confetti({ particleCount: 50, spread: 40, origin: { y: 0.7 } });
+      }
+    } catch (e) {
+      console.error('Plan generation error:', e);
+      generatedPlan = generateLocalPlan(subjects, hours, days, goal);
+      renderPlanDay(0);
+      toast('Plan generated (offline mode)');
+    }
+  });
+
+  // Import individual task from timetable
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('importTaskBtn')) {
+      const subject = e.target.dataset.subject;
+      const topic = e.target.dataset.topic;
+      const time = e.target.dataset.time;
+      
+      if (subject) {
+        addTask(`${subject}: ${topic || 'Study session'} (${time || ''})`);
+      }
+    }
+  });
 }
 
 /* ============================================================================
