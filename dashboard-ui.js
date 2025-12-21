@@ -2277,9 +2277,61 @@ async function importPlannerToPomodoro() {
 // ============================================================================
 // PDF SHARING - COMPLETE FIXED VERSION
 // ============================================================================
-
 async function sharePlannerPDF() {
-  if (!generatedPlan) return toast('Generate a plan first!');
+  // ===== DEBUG =====
+  console.log('=== SHARE PDF DEBUG ===');
+  console.log('generatedPlan exists:', !!generatedPlan);
+  
+  if (!generatedPlan) {
+    toast('Generate a plan first!');
+    return;
+  }
+  
+  console.log('generatedPlan.days:', generatedPlan.days);
+  console.log('generatedPlan.meta:', generatedPlan.meta);
+  
+  // ===== FORCE ADD META IF MISSING =====
+  if (!generatedPlan.meta) {
+    console.warn('⚠️ Plan has no meta! Creating from plan data...');
+    
+    // Extract subjects from slots
+    const subjectSet = new Set();
+    if (generatedPlan.days && Array.isArray(generatedPlan.days)) {
+      generatedPlan.days.forEach(day => {
+        if (day && Array.isArray(day.slots)) {
+          day.slots.forEach(slot => {
+            if (slot && slot.subject) {
+              const subj = String(slot.subject).trim().toLowerCase();
+              if (subj !== 'break' && !subj.includes('lunch') && !subj.includes('rest')) {
+                subjectSet.add(slot.subject);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    generatedPlan.meta = {
+      subjects: Array.from(subjectSet),
+      hoursPerDay: 3,
+      days: generatedPlan.days ? generatedPlan.days.length : 0,
+      goal: '',
+      generatedAt: new Date().toISOString()
+    };
+    
+    console.log('✅ Created meta:', generatedPlan.meta);
+  }
+  
+  // ===== ENSURE META.SUBJECTS IS ARRAY =====
+  if (!generatedPlan.meta.subjects) {
+    generatedPlan.meta.subjects = [];
+  }
+  if (!Array.isArray(generatedPlan.meta.subjects)) {
+    generatedPlan.meta.subjects = [String(generatedPlan.meta.subjects)];
+  }
+  
+  console.log('Final meta.subjects:', generatedPlan.meta.subjects);
+  // ===== END DEBUG =====
 
   const modal = $('#shareModal');
   if (modal) {
@@ -2287,8 +2339,11 @@ async function sharePlannerPDF() {
     modal.classList.add('flex');
   }
   
-  $('#shareLoading')?.classList.remove('hidden');
-  $('#shareSuccess')?.classList.add('hidden');
+  const loadingEl = $('#shareLoading');
+  const successEl = $('#shareSuccess');
+  
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (successEl) successEl.classList.add('hidden');
 
   try {
     const user = auth.currentUser;
@@ -2306,7 +2361,6 @@ async function sharePlannerPDF() {
     }
 
     console.log('PDF generated, length:', pdfBase64.length);
-    console.log('PDF preview:', pdfBase64.substring(0, 100));
 
     toast('Uploading...');
 
@@ -2315,7 +2369,7 @@ async function sharePlannerPDF() {
       userId: user.uid,
       userName: state.user.name || 'Timora User',
       plan: generatedPlan,
-      pdfBase64: pdfBase64, // Store ONLY the base64 part (no data URL prefix)
+      pdfBase64: pdfBase64,
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     });
@@ -2325,8 +2379,8 @@ async function sharePlannerPDF() {
     console.log('Share document created:', shareDoc.id);
     console.log('Share link:', shareLink);
 
-    $('#shareLoading')?.classList.add('hidden');
-    $('#shareSuccess')?.classList.remove('hidden');
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (successEl) successEl.classList.remove('hidden');
     
     const linkInput = $('#shareLink');
     if (linkInput) linkInput.value = shareLink;
@@ -2337,9 +2391,11 @@ async function sharePlannerPDF() {
     console.error('Share error:', e);
     toast('Failed to create share link: ' + e.message);
     
-    $('#shareLoading')?.classList.add('hidden');
-    modal?.classList.add('hidden');
-    modal?.classList.remove('flex');
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
   }
 }
 
@@ -4406,4 +4462,5 @@ console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timo
 initializeDashboard();
 
 }); // End DOMContentLoaded
+
 
