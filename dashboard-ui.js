@@ -2326,19 +2326,39 @@ async function sharePlannerPDF() {
 
   try {
     const user = auth.currentUser;
-    if (!user) throw new Error('Login required');
+    if (!user) {
+      throw new Error('Login required');
+    }
 
-    // Create share document with plan data
+    toast('Generating PDF...');
+
+    // Generate PDF as base64
+    const pdfBase64 = await generatePDFBase64();
+    
+    if (!pdfBase64) {
+      throw new Error('Failed to generate PDF');
+    }
+
+    console.log('PDF generated, length:', pdfBase64.length);
+    console.log('PDF preview:', pdfBase64.substring(0, 100));
+
+    toast('Uploading...');
+
+    // Create share document with PDF data and plan data
     const shareDoc = await addDoc(collection(db, 'shared-plans'), {
       userId: user.uid,
-      userName: state.user.name,
+      userName: state.user.name || 'Timora User',
       plan: generatedPlan,
+      pdfBase64: pdfBase64, // Store ONLY the base64 part (no data URL prefix)
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     });
 
     const shareLink = `${window.location.origin}/view-plan.html?id=${shareDoc.id}`;
     
+    console.log('Share document created:', shareDoc.id);
+    console.log('Share link:', shareLink);
+
     $('#shareLoading')?.classList.add('hidden');
     $('#shareSuccess')?.classList.remove('hidden');
     
@@ -2346,158 +2366,224 @@ async function sharePlannerPDF() {
     if (linkInput) linkInput.value = shareLink;
 
     toast('🔗 Share link created!');
+    
   } catch (e) {
     console.error('Share error:', e);
-    toast('Failed to create share link');
+    toast('Failed to create share link: ' + e.message);
+    
+    $('#shareLoading')?.classList.add('hidden');
     modal?.classList.add('hidden');
+    modal?.classList.remove('flex');
   }
 }
 
-function initPlanner() {
-  const genBtn = $('#genAIPlan');
-  const result = $('#plannerResult');
-  
-  // PDF download
-  $('#plannerPdfBtn')?.addEventListener('click', plannerToPDF);
-  
-  // Import to Pomodoro
-  $('#plannerImportBtn')?.addEventListener('click', importPlannerToPomodoro);
-  
-  // Share
-  $('#plannerShareBtn')?.addEventListener('click', sharePlannerPDF);
-  
-  // Day navigation
-  $('#plannerPrevBtn')?.addEventListener('click', () => {
-    if (currentPlanDay > 0) {
-      renderPlanDay(currentPlanDay - 1);
-    } else {
-      toast('Already at first day');
-    }
-  });
-  
-  $('#plannerNextBtn')?.addEventListener('click', () => {
-    if (generatedPlan && currentPlanDay < generatedPlan.days.length - 1) {
-      renderPlanDay(currentPlanDay + 1);
-    } else {
-      toast('Already at last day');
-    }
-  });
 
-  // Share modal controls
-  $('#closeShareModal')?.addEventListener('click', () => {
-    $('#shareModal')?.classList.add('hidden');
-    $('#shareModal')?.classList.remove('flex');
-  });
-  
-  $('#copyLinkBtn')?.addEventListener('click', () => {
-    const input = $('#shareLink');
-    if (input) {
-      input.select();
-      document.execCommand('copy');
-      toast('📋 Link copied!');
-      
-      const btn = $('#copyLinkBtn');
-      if (btn) {
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
+
+// Generate PDF as pure Base64 string (without data URL prefix)
+async function generatePDFBase64() {
+  if (!generatedPlan) return null;
+
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (!jsPDF) {
+    console.error('jsPDF not loaded');
+    toast('PDF library not loaded. Please refresh.');
+    return null;
+  }
+
+  try {
+    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let y = 60;
+
+    // ===== HEADER =====
+    pdf.setFillColor(114, 89, 236);
+    pdf.rect(0, 0, pageWidth, 100, 'F');
+    
+    // Gradient overlay
+    pdf.setFillColor(198, 102, 247);
+    pdf.rect(0, 60, pageWidth, 40, 'F');
+
+    // Title
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(28);
+    pdf.text("Timora Study Plan", pageWidth / 2, 45, { align: 'center' });
+
+    // Subtitle
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+    const date = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', month: 'long', day: 'numeric' 
+    });
+    const subtitleText = `Generated on ${date} | ${generatedPlan.days?.length || 0} days | ${generatedPlan.meta?.subjects?.join(', ') || 'Study Plan'}`;
+    pdf.text(subtitleText, pageWidth / 2, 75, { align: 'center' });
+
+    y = 130;
+
+    // ===== CONTENT =====
+    const days = generatedPlan.days || [];
+    
+    days.forEach((day, dayIdx) => {
+      // Check for page break
+      if (y > pageHeight - 120) {
+        pdf.addPage();
+        y = 40;
       }
-    }
-  });
 
-  // Social sharing
-  $('#shareWhatsapp')?.addEventListener('click', () => {
-    const link = $('#shareLink')?.value;
-    if (link) {
-      window.open(`https://wa.me/?text=${encodeURIComponent(`Check out my Timora Study Plan: ${link}`)}`, '_blank');
-    }
-  });
-
-  $('#shareEmail')?.addEventListener('click', () => {
-    const link = $('#shareLink')?.value;
-    if (link) {
-      const subject = encodeURIComponent('My Study Plan from Timora');
-      const body = encodeURIComponent(`Hi,\n\nCheck out my study plan:\n${link}\n\nCreated with Timora`);
-      window.location.href = `mailto:?subject=${subject}&body=${body}`;
-    }
-  });
-
-  $('#shareTwitter')?.addEventListener('click', () => {
-    const link = $('#shareLink')?.value;
-    if (link) {
-      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Just created my study plan with @Timora 📚✨`)}&url=${encodeURIComponent(link)}`, '_blank');
-    }
-  });
-
-  // Generate plan button
-  genBtn?.addEventListener('click', async () => {
-    const subjects = ($('#plannerSubjects')?.value || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    const hours = Number($('#plannerHours')?.value) || 3;
-    const days = Number($('#plannerDays')?.value) || 7;
-    const goal = $('#plannerGoal')?.value?.trim() || 'Study Goal';
-
-    if (subjects.length === 0) {
-      return toast('Add at least one subject');
-    }
-
-    if (result) {
-      result.innerHTML = `
-        <div class="flex items-center gap-3 text-slate-600 p-4">
-          <div class="animate-spin w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full"></div>
-          <span>Generating your personalized study plan...</span>
-        </div>
-      `;
-    }
-
-    try {
-      // Try AI first, fallback to local
-      const aiPlan = await fetchAIPlan(subjects, hours, days, goal);
-      generatedPlan = aiPlan || generateLocalPlan(subjects, hours, days, goal);
+      // Day header background
+      pdf.setFillColor(245, 247, 250);
+      pdf.roundedRect(30, y - 5, pageWidth - 60, 35, 5, 5, 'F');
       
-      if (result) {
-        result.innerHTML = `
-          <div class="p-4 rounded-xl bg-green-50 border border-green-200">
-            <div class="flex items-center gap-2 text-green-700 font-medium mb-1">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              Plan Generated!
-            </div>
-            <p class="text-sm text-green-600">
-              ${generatedPlan.days.length}-day plan for ${subjects.join(', ')} • ${hours}h/day
-            </p>
-          </div>
-        `;
-      }
+      // Day number circle
+      pdf.setFillColor(114, 89, 236);
+      pdf.circle(50, y + 12, 15, 'F');
       
-      renderPlanDay(0);
-      toast('✨ Study plan generated!');
+      // Day number text
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(14);
+      pdf.text(String(dayIdx + 1), 50, y + 17, { align: 'center' });
       
-      if (window.confetti) {
-        confetti({ particleCount: 50, spread: 40, origin: { y: 0.7 } });
-      }
-    } catch (e) {
-      console.error('Plan generation error:', e);
-      generatedPlan = generateLocalPlan(subjects, hours, days, goal);
-      renderPlanDay(0);
-      toast('Plan generated (offline mode)');
-    }
-  });
+      // Day label
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFontSize(16);
+      pdf.text(`Day ${day.day || dayIdx + 1}`, 75, y + 17);
 
-  // Import individual task from timetable
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('importTaskBtn')) {
-      const subject = e.target.dataset.subject;
-      const topic = e.target.dataset.topic;
-      const time = e.target.dataset.time;
+      y += 50;
+
+      // Slots
+      const slots = day.slots || [];
+      slots.forEach((slot, slotIdx) => {
+        // Check for page break
+        if (y > pageHeight - 80) {
+          pdf.addPage();
+          y = 40;
+        }
+
+        const isBreak = (slot.subject || '').toLowerCase().includes('break');
+        
+        // Slot background
+        pdf.setFillColor(250, 250, 250);
+        pdf.roundedRect(45, y - 3, pageWidth - 90, 50, 4, 4, 'F');
+
+        // Color bar on left
+        if (isBreak) {
+          pdf.setFillColor(251, 191, 36); // Yellow for breaks
+        } else {
+          const colors = [
+            [139, 92, 246],  // Purple
+            [59, 130, 246],  // Blue
+            [16, 185, 129],  // Green
+            [239, 68, 68]    // Red
+          ];
+          const colorIndex = slotIdx % colors.length;
+          pdf.setFillColor(colors[colorIndex][0], colors[colorIndex][1], colors[colorIndex][2]);
+        }
+        pdf.roundedRect(45, y - 3, 6, 50, 2, 2, 'F');
+
+        // Time and Subject
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        pdf.setTextColor(30, 41, 59);
+        const timeSubject = `${slot.time || '00:00'} • ${slot.subject || 'Study'}`;
+        pdf.text(timeSubject, 60, y + 15);
+
+        // Topic
+        if (slot.topic) {
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.setTextColor(100, 116, 139);
+          
+          // Truncate long topics
+          const maxTopicLength = 70;
+          const topicText = slot.topic.length > maxTopicLength 
+            ? slot.topic.substring(0, maxTopicLength) + '...'
+            : slot.topic;
+          pdf.text(topicText, 60, y + 32);
+        }
+
+        y += 58;
+      });
+
+      y += 15; // Space between days
+    });
+
+    // ===== FOOTER ON ALL PAGES =====
+    const totalPages = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
       
-      if (subject) {
-        addTask(`${subject}: ${topic || 'Study session'} (${time || ''})`);
-      }
+      // Footer line
+      pdf.setDrawColor(226, 232, 240);
+      pdf.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
+      
+      // Footer text
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 20, { align: 'center' });
+      pdf.text('timora.app', 35, pageHeight - 20);
+      pdf.text('Generated by Timora', pageWidth - 35, pageHeight - 20, { align: 'right' });
     }
-  });
+
+    // ===== OUTPUT AS PURE BASE64 =====
+    // Use 'base64' output type, NOT 'datauristring'
+    const base64String = pdf.output('base64');
+    
+    console.log('PDF base64 generated, length:', base64String.length);
+    
+    return base64String;
+    
+  } catch (e) {
+    console.error('PDF generation error:', e);
+    toast('PDF generation failed: ' + e.message);
+    return null;
+  }
+}
+
+// Also update the download function to work with the new format
+async function plannerToPDF() {
+  if (!generatedPlan) return toast('Generate a plan first!');
+
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (!jsPDF) return toast('PDF library not loaded. Please refresh.');
+
+  try {
+    toast('Generating PDF...');
+    
+    // Generate using the same function
+    const base64String = await generatePDFBase64();
+    
+    if (!base64String) {
+      throw new Error('Failed to generate PDF');
+    }
+
+    // Convert base64 to blob and download
+    const byteCharacters = atob(base64String);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    
+    // Create download link
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Timora_Study_Plan_${new Date().toISOString().split('T')[0]}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast('📄 PDF downloaded!');
+    
+  } catch (e) {
+    console.error('PDF download error:', e);
+    toast('PDF download failed: ' + e.message);
+  }
 }
 
 /* ============================================================================
