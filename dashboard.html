@@ -6,18 +6,29 @@
   <title>Timora — Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
- <!-- jsPDF - Fixed Version -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- jsPDF - Working Version -->
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script>
-  // Wait for jsPDF to load and set it up correctly
-  window.addEventListener('DOMContentLoaded', () => {
-    if (window.jspdf && window.jspdf.jsPDF) {
-      window.jsPDF = window.jspdf.jsPDF;
-      console.log('✅ jsPDF loaded successfully');
-    } else {
-      console.error('❌ jsPDF failed to load');
+  // Initialize jsPDF when loaded
+  (function initJsPDF() {
+    function setup() {
+      if (window.jspdf && window.jspdf.jsPDF) {
+        window.jsPDF = window.jspdf.jsPDF;
+        console.log('✅ jsPDF ready');
+        return true;
+      }
+      return false;
     }
-  });
+    
+    // Try immediately
+    if (!setup()) {
+      // If not ready, wait for load
+      window.addEventListener('load', setup);
+      // Also try after a delay as backup
+      setTimeout(setup, 1000);
+    }
+  })();
 </script>
   <script type="module">
   // Firebase SDK imports
@@ -1715,4 +1726,5 @@
 
 </body>
 </html>
+
 
