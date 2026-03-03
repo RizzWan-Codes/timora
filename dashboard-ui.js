@@ -313,10 +313,10 @@ let activeListeners = [];
 
 const soundMap = {
   none: null,
-  chime: 'chime.mp3',
-  'kitchen-bell': 'kitchen-bell.mp3',
-  'digital-clock': 'digital-clock.mp3',
-  'soft-ding': 'soft-ding.mp3'
+  'chime': 'sounds/chime.mp3',
+  'kitchen-bell': 'sounds/kitchen-bell.mp3',
+  'digital-clock': 'sounds/digital-clock.mp3',
+  'soft-ding': 'sounds/soft-ding.mp3'
 };
 
 window.soundMap = soundMap;
@@ -4462,6 +4462,7 @@ console.log('🚀 Timora Dashboard v6.0 loaded. Access debug API via window.Timo
 initializeDashboard();
 
 }); // End DOMContentLoaded
+
 
 
 
